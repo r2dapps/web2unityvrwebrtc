@@ -6,118 +6,100 @@
   <title>Doctor VR WebRTC Consultation Portal | Web2RVR</title>
   
   <!-- SEO & Social Meta Tags -->
-  <meta name="description" content="Real-time WebRTC live HD video & audio streaming gateway for Doctor Telemedicine, Meta Quest 3 VR, and Unity Engine.">
+  <meta name="description" content="Real-time WebRTC live HD video & audio streaming gateway for Doctor Telemedicine, Meta Quest 3 VR, and Web Devices.">
   <meta name="keywords" content="WebRTC, Telemedicine, VR, Meta Quest 3, Unity, Firebase, P2P Video Call">
   <meta name="theme-color" content="#0b0f19">
 
-  <!-- Open Graph / Facebook / WhatsApp -->
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://r2dapps.github.io/web2rvrwebrtc/">
-  <meta property="og:title" content="Doctor VR WebRTC Consultation Portal">
-  <meta property="og:description" content="Connect Doctor Mobile Web and Meta Quest 3 VR in real-time with P2P HD Video Streaming.">
-  <meta property="og:image" content="favicon.svg">
-
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Doctor VR WebRTC Consultation Portal">
-  <meta name="twitter:description" content="Real-time WebRTC video gateway between web browsers and Meta Quest 3 VR.">
-
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="alternate icon" href="favicon.svg">
 
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
-  <!-- Firebase App & Database SDKs -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-  <!-- PeerJS SDK for Zero-Cloud Signaling Option -->
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <!-- Screen 1: Room Start Screen -->
+  <!-- Screen 1: Role Selection & Room Setup -->
   <div id="startScreen" class="screen-container">
     <div class="card start-card">
       <div class="brand-logo">
         <i class="fa-solid fa-vr-cardboard"></i>
       </div>
-      <h2>Doctor VR Consultation</h2>
-      <p class="subtitle">Multi-Signaling WebRTC Gateway for Meta Quest 3 & Web Devices</p>
+      <h2>AetherCare Web2RVR</h2>
+      <p class="subtitle">Real-Time WebRTC P2P Telemedicine Gateway</p>
 
-      <!-- Signaling Provider Switcher -->
-      <div class="form-group">
-        <label><i class="fa-solid fa-satellite-dish"></i> Signaling Engine</label>
-        <select id="signalingModeSelect" class="select-input">
-          <option value="peerjs">PeerJS Engine (Recommended - 0 Account / Cloud Setup)</option>
-          <option value="firebase">Firebase Realtime DB (Custom Database)</option>
-        </select>
+      <!-- Role Tabs: Doctor (Host) vs Patient / VR (Joiner) -->
+      <div class="role-tabs">
+        <button class="role-tab active" id="tabDoctor"><i class="fa-solid fa-user-doctor"></i> Doctor (Host)</button>
+        <button class="role-tab" id="tabPatient"><i class="fa-solid fa-hospital-user"></i> Patient / VR (Joiner)</button>
       </div>
 
-      <div class="form-group">
-        <label for="roomInput"><i class="fa-solid fa-key"></i> Doctor Room Key</label>
-        <div class="input-with-btn">
-          <input type="text" id="roomInput" value="DOC-8921" placeholder="Enter Room Key">
-          <button id="btnGenerateKey" class="btn-icon" title="Generate New Key"><i class="fa-solid fa-rotate"></i></button>
+      <!-- Doctor View Panel -->
+      <div id="panelDoctor" class="role-panel">
+        <div class="form-group">
+          <label for="doctorRoomInput"><i class="fa-solid fa-key"></i> Room Key</label>
+          <div class="input-with-btn">
+            <input type="text" id="doctorRoomInput" value="DOC-8921" readonly>
+            <button id="btnNewKey" class="btn-icon" title="New Key"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+          <div class="expiry-info">
+            <i class="fa-solid fa-clock"></i> Expires: <span id="expiryTimeText">12:00 AM IST</span>
+          </div>
         </div>
-        <div class="expiry-info">
-          <i class="fa-solid fa-clock"></i> Valid until <span id="expiryTimeText">12:00 AM IST</span>
+        <p class="help-text">Share Room Key <strong><span id="shareRoomKeyTag">DOC-8921</span></strong> with Patient or Unity VR.</p>
+        <button id="btnCreateRoom" class="btn btn-primary btn-block">
+          <i class="fa-solid fa-video"></i> Create Room & Start Camera
+        </button>
+      </div>
+
+      <!-- Patient / VR View Panel -->
+      <div id="panelPatient" class="role-panel" style="display: none;">
+        <div class="form-group">
+          <label for="patientRoomInput"><i class="fa-solid fa-key"></i> Enter Doctor's Room Key</label>
+          <input type="text" id="patientRoomInput" placeholder="e.g. DOC-8921">
         </div>
+        <p class="help-text">Enter the Room Key provided by the Doctor to connect instantly.</p>
+        <button id="btnJoinAsPatient" class="btn btn-success btn-block">
+          <i class="fa-solid fa-plug"></i> Join Consultation Room
+        </button>
       </div>
 
-      <!-- Live QR Code Card for Easy Instant Sharing -->
-      <div class="qr-container">
-        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Scan to Join Room Automatically</div>
-        <div class="qr-image-wrapper">
-          <img id="qrCodeImg" src="" alt="Room QR Code">
-        </div>
-        <div style="font-size: 0.7rem; color: #06b6d4; word-break: break-all;" id="qrLinkText">https://r2dapps.github.io/web2rvrwebrtc/?room=DOC-8921</div>
-      </div>
-
-      <!-- Firebase DB URL Input (Hidden by default unless Firebase selected) -->
-      <div class="form-group" id="firebaseConfigBox" style="display: none;">
-        <label for="firebaseUrlInput"><i class="fa-solid fa-database"></i> Firebase DB URL</label>
-        <input type="text" id="firebaseUrlInput" value="" placeholder="https://YOUR-PROJECT-rtdb.firebaseio.com">
-      </div>
-
-      <button id="btnJoinRoom" class="btn btn-primary btn-block">
-        <i class="fa-solid fa-circle-play"></i> Start Doctor Session
-      </button>
     </div>
   </div>
 
-  <!-- Screen 2: Active Video Call Screen (Full Screen Mobile Layout) -->
+  <!-- Screen 2: Active Full-Screen Video Call View -->
   <div id="callScreen" class="screen-container" style="display: none;">
-    
-    <!-- Full Screen Background: Incoming Stream from 2nd Device / VR -->
     <div class="vr-stream-container">
-      <video id="remoteVrVideo" autoplay playsinline class="vr-video-full"></video>
       
-      <!-- Placeholder when 2nd device/VR is not yet connected -->
-      <div id="vrConnectingOverlay" class="vr-overlay font-sans">
+      <!-- Full Screen Background: Remote Video Stream (Patient VR or Doctor) -->
+      <video id="remoteVideo" autoplay playsinline class="vr-video-full"></video>
+      
+      <!-- Connecting Overlay -->
+      <div id="connectingOverlay" class="vr-overlay">
         <div class="spinner"></div>
-        <h3>Connecting Session...</h3>
-        <p>Connecting to Room: <strong id="displayRoomKey">DOC-8921</strong></p>
+        <h3 id="connectingTitle">Connecting to Peer...</h3>
+        <p>Room Key: <strong id="displayRoomKey">DOC-8921</strong></p>
       </div>
 
-      <!-- Top Overlay Bar -->
+      <!-- Top Bar Overlay -->
       <div class="top-overlay">
         <div class="room-pill">
           <span class="pulse-dot"></span>
           <span id="activeRoomTag">DOC-8921</span>
         </div>
-
-        <button id="btnCopyLink" class="pill-btn"><i class="fa-solid fa-share-nodes"></i> Share Link</button>
+        <button id="btnCopyKey" class="pill-btn"><i class="fa-solid fa-copy"></i> Copy Key</button>
       </div>
 
-      <!-- Floating Picture-in-Picture: Doctor Local Camera Stream -->
-      <div class="floating-pip" id="doctorPip">
-        <video id="localDoctorVideo" autoplay playsinline muted></video>
-        <div class="pip-label">Doctor (You)</div>
+      <!-- Floating Picture-in-Picture: Local Webcam Stream -->
+      <div class="floating-pip">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <div class="pip-label" id="localPipLabel">You</div>
       </div>
 
-      <!-- Floating Controls Bar (Bottom) -->
+      <!-- Bottom Floating Control Bar -->
       <div class="bottom-controls">
         <button id="btnToggleMic" class="control-btn"><i class="fa-solid fa-microphone"></i></button>
         <button id="btnToggleCam" class="control-btn"><i class="fa-solid fa-video"></i></button>
@@ -125,7 +107,6 @@
         <button id="btnEndSession" class="control-btn btn-end"><i class="fa-solid fa-phone-slash"></i></button>
       </div>
     </div>
-
   </div>
 
   <script src="app.js"></script>
