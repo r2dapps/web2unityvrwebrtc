@@ -1,4 +1,4 @@
-// Multi-Signaling WebRTC Logic for Doctor VR App (Firebase / PeerJS / QR Code)
+// Multi-Signaling WebRTC Logic for Doctor VR App (Firebase / PeerJS / Dual Web Device / QR Code)
 
 const ICE_SERVERS = {
   iceServers: [
@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const displayRoomKey = document.getElementById('displayRoomKey');
   const activeRoomTag = document.getElementById('activeRoomTag');
   const btnCopyLink = document.getElementById('btnCopyLink');
+  const qrCodeImg = document.getElementById('qrCodeImg');
+  const qrLinkText = document.getElementById('qrLinkText');
   
   const localDoctorVideo = document.getElementById('localDoctorVideo');
   const remoteVrVideo = document.getElementById('remoteVrVideo');
@@ -41,6 +43,33 @@ document.addEventListener('DOMContentLoaded', () => {
   let isAudioMuted = false;
   let isVideoOff = false;
   let facingMode = 'user';
+
+  // Parse URL Parameters to check if joining from QR Code scan
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomFromUrl = urlParams.get('room') || urlParams.get('join');
+  if (roomFromUrl && roomInput) {
+    roomInput.value = roomFromUrl.toUpperCase();
+  }
+
+  // Generate & Render QR Code for Room URL
+  function updateQRCode() {
+    if (!roomInput || !qrCodeImg || !qrLinkText) return;
+    const roomId = roomInput.value.trim().toUpperCase() || 'DOC-8921';
+    
+    // Construct full shareable URL
+    const baseUrl = window.location.origin + window.location.pathname;
+    const shareableUrl = `${baseUrl}?room=${roomId}`;
+
+    qrLinkText.textContent = shareableUrl;
+
+    // Use free QR Server API to render QR Code SVG/PNG image
+    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareableUrl)}`;
+    qrCodeImg.src = qrApiUrl;
+  }
+
+  if (roomInput) {
+    roomInput.addEventListener('input', updateQRCode);
+  }
 
   // Toggle Config Boxes based on Mode
   if (signalingModeSelect) {
@@ -66,22 +95,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     expiryTimeText.textContent = tomorrowIST.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) + ' IST';
   }
+
   updateExpiryDisplay();
+  updateQRCode();
 
   // 2. Generate Random Room Key
   if (btnGenerateKey && roomInput) {
     btnGenerateKey.addEventListener('click', () => {
       const rand = Math.floor(1000 + Math.random() * 9000);
       roomInput.value = `DOC-${rand}`;
+      updateQRCode();
     });
   }
 
-  // 3. Copy Room Key
+  // 3. Copy Room Shareable Link
   if (btnCopyLink) {
     btnCopyLink.addEventListener('click', () => {
-      navigator.clipboard.writeText(currentRoomId);
-      btnCopyLink.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
-      setTimeout(() => btnCopyLink.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Key', 2000);
+      const baseUrl = window.location.origin + window.location.pathname;
+      const shareableUrl = `${baseUrl}?room=${currentRoomId}`;
+      navigator.clipboard.writeText(shareableUrl);
+      btnCopyLink.innerHTML = '<i class="fa-solid fa-check"></i> Link Copied!';
+      setTimeout(() => btnCopyLink.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Link', 2000);
     });
   }
 
@@ -105,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- MODE A: FIREBASE SIGNALLING ---
+  // --- MODE A: FIREBASE SIGNALLING (Works for Web-to-VR AND Web-to-Web on 2 Devices) ---
   async function initFirebaseWebRTC() {
     const firebaseUrl = firebaseUrlInput ? firebaseUrlInput.value.trim() : '';
     if (!firebaseUrl) {
@@ -128,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await acquireLocalCamera();
 
     pc.ontrack = (event) => {
+      console.log("Remote Video Stream Received!", event.streams);
       if (event.streams && event.streams[0] && remoteVrVideo) {
         remoteVrVideo.srcObject = event.streams[0];
         if (vrConnectingOverlay) vrConnectingOverlay.style.display = 'none';
@@ -148,30 +183,61 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    // Check if an offer already exists (if joining as 2nd web device)
+    const existingOfferSnap = await doctorOffersRef.once('value');
+    const existingOffer = existingOfferSnap.val();
 
-    await doctorOffersRef.set({ sdp: offer.sdp, type: offer.type, timestamp: Date.now() });
+    if (!existingOffer) {
+      // Creator (Doctor / Device 1)
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await doctorOffersRef.set({ sdp: offer.sdp, type: offer.type, timestamp: Date.now() });
 
-    vrAnswersRef.on('value', async (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.sdp && !pc.currentRemoteDescription) {
-        const rsd = new RTCSessionDescription(data);
-        await pc.setRemoteDescription(rsd);
-      }
-    });
+      // Listen for Answer
+      vrAnswersRef.on('value', async (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.sdp && !pc.currentRemoteDescription) {
+          const rsd = new RTCSessionDescription(data);
+          await pc.setRemoteDescription(rsd);
+        }
+      });
 
-    vrCandidatesRef.on('child_added', async (snapshot) => {
-      const candidateData = snapshot.val();
-      if (candidateData) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-        } catch (e) { console.error("ICE error:", e); }
-      }
-    });
+      // Listen for ICE Candidates
+      vrCandidatesRef.on('child_added', async (snapshot) => {
+        const candidateData = snapshot.val();
+        if (candidateData) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+          } catch (e) { console.error("ICE error:", e); }
+        }
+      });
+    } else {
+      // Participant (Patient / Device 2)
+      await pc.setRemoteDescription(new RTCSessionDescription(existingOffer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await vrAnswersRef.set({ sdp: answer.sdp, type: answer.type, timestamp: Date.now() });
+
+      // Send Candidates under vr_candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          vrCandidatesRef.push(event.candidate.toJSON());
+        }
+      };
+
+      // Listen for Doctor candidates
+      doctorCandidatesRef.on('child_added', async (snapshot) => {
+        const candidateData = snapshot.val();
+        if (candidateData) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+          } catch (e) { console.error("ICE error:", e); }
+        }
+      });
+    }
   }
 
-  // --- MODE B: PEERJS SIGNALLING (With STUN configured to work across different networks) ---
+  // --- MODE B: PEERJS SIGNALLING ---
   async function initPeerJS() {
     await acquireLocalCamera();
 
@@ -180,13 +246,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Configure PeerJS with explicit Google STUN Servers to bypass cross-network firewalls
-    peerInstance = new Peer(`${currentRoomId}-doctor`, {
-      config: ICE_SERVERS
-    });
+    // Try joining existing peer or creating host
+    peerInstance = new Peer(`${currentRoomId}-doctor`, { config: ICE_SERVERS });
 
     peerInstance.on('open', (id) => {
-      console.log("PeerJS Doctor Ready ID:", id);
+      console.log("PeerJS Ready ID:", id);
     });
 
     peerInstance.on('call', (call) => {
@@ -195,6 +259,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (remoteVrVideo) remoteVrVideo.srcObject = vrStream;
         if (vrConnectingOverlay) vrConnectingOverlay.style.display = 'none';
       });
+    });
+
+    peerInstance.on('error', (err) => {
+      // If peer ID taken, call as patient
+      if (err.type === 'unavailable-id') {
+        const peer2 = new Peer({ config: ICE_SERVERS });
+        peer2.on('open', () => {
+          const call = peer2.call(`${currentRoomId}-doctor`, localStream);
+          call.on('stream', (vrStream) => {
+            if (remoteVrVideo) remoteVrVideo.srcObject = vrStream;
+            if (vrConnectingOverlay) vrConnectingOverlay.style.display = 'none';
+          });
+        });
+      }
     });
   }
 

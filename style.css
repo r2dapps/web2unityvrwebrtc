@@ -38,6 +38,7 @@ body, html {
   justify-content: center;
   padding: 1.5rem;
   background: radial-gradient(circle at 50% 30%, #1a243a 0%, #090d16 100%);
+  overflow-y: auto;
 }
 
 .start-card {
@@ -47,38 +48,38 @@ body, html {
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
-  padding: 2rem;
+  padding: 1.75rem;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1.1rem;
 }
 
 .brand-logo {
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
   background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
-  border-radius: 16px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.8rem;
+  font-size: 1.6rem;
   color: #000;
   box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
 }
 
 .start-card h2 {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 700;
   text-align: center;
 }
 
 .subtitle {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #94a3b8;
   text-align: center;
-  margin-top: -0.5rem;
+  margin-top: -0.4rem;
 }
 
 .form-group {
@@ -89,7 +90,7 @@ body, html {
 }
 
 .form-group label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: #cbd5e1;
   text-transform: uppercase;
@@ -98,12 +99,12 @@ body, html {
 
 .form-group input, .select-input {
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.7rem 0.9rem;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 10px;
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   outline: none;
 }
 
@@ -119,14 +120,14 @@ body, html {
 
 .input-with-btn input {
   font-family: monospace;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--accent-cyan);
   letter-spacing: 1px;
 }
 
 .btn-icon {
-  padding: 0 1rem;
+  padding: 0 0.9rem;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 10px;
@@ -135,7 +136,7 @@ body, html {
 }
 
 .expiry-info {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: #f59e0b;
   display: flex;
   align-items: center;
@@ -143,12 +144,41 @@ body, html {
   margin-top: 0.2rem;
 }
 
+/* Live QR Code Display Card */
+.qr-container {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px dashed rgba(6, 182, 212, 0.3);
+  border-radius: 12px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+.qr-image-wrapper {
+  width: 130px;
+  height: 130px;
+  background: #fff;
+  padding: 6px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.qr-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .btn {
-  padding: 0.85rem 1.5rem;
+  padding: 0.8rem 1.4rem;
   border-radius: 12px;
   border: none;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.95rem;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -184,7 +214,7 @@ body, html {
   overflow: hidden;
 }
 
-/* Background Full Screen Video: VR Feed */
+/* Background Full Screen Video: VR / 2nd Device Feed */
 .vr-video-full {
   width: 100%;
   height: 100%;
@@ -207,8 +237,8 @@ body, html {
 }
 
 .spinner {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border: 4px solid rgba(6, 182, 212, 0.2);
   border-top-color: var(--accent-cyan);
   border-radius: 50%;

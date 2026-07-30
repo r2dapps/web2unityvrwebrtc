@@ -21,7 +21,7 @@
         <i class="fa-solid fa-user-md"></i>
       </div>
       <h2>Doctor VR Consultation</h2>
-      <p class="subtitle">Multi-Signaling WebRTC Gateway for Meta Quest 3 & Unity</p>
+      <p class="subtitle">Multi-Signaling WebRTC Gateway for Meta Quest 3 & Web Devices</p>
 
       <!-- Signaling Provider Switcher -->
       <div class="form-group">
@@ -29,7 +29,6 @@
         <select id="signalingModeSelect" class="select-input">
           <option value="firebase">Firebase Realtime DB (Recommended - Works Across Networks)</option>
           <option value="peerjs">PeerJS Server (Zero Account / Cloud)</option>
-          <option value="qrcode">Manual QR Code / SDP Copy</option>
         </select>
       </div>
 
@@ -42,6 +41,15 @@
         <div class="expiry-info">
           <i class="fa-solid fa-clock"></i> Valid until <span id="expiryTimeText">12:00 AM IST</span>
         </div>
+      </div>
+
+      <!-- Live QR Code Card for Easy Instant Sharing -->
+      <div class="qr-container">
+        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Scan to Join Room on 2nd Device / VR</div>
+        <div class="qr-image-wrapper">
+          <img id="qrCodeImg" src="" alt="Room QR Code">
+        </div>
+        <div style="font-size: 0.7rem; color: #06b6d4;" id="qrLinkText">https://r2dapps.github.io/web2rvrwebrtc/?room=DOC-8921</div>
       </div>
 
       <div class="form-group" id="firebaseConfigBox">
@@ -58,15 +66,15 @@
   <!-- Screen 2: Active Video Call Screen (Full Screen Mobile Layout) -->
   <div id="callScreen" class="screen-container" style="display: none;">
     
-    <!-- Full Screen Background: Incoming VR Stream from Unity/Quest 3 -->
+    <!-- Full Screen Background: Incoming Stream from 2nd Device / VR -->
     <div class="vr-stream-container">
       <video id="remoteVrVideo" autoplay playsinline class="vr-video-full"></video>
       
-      <!-- Placeholder when VR is not yet connected -->
+      <!-- Placeholder when 2nd device/VR is not yet connected -->
       <div id="vrConnectingOverlay" class="vr-overlay font-sans">
         <div class="spinner"></div>
-        <h3>Waiting for Unity VR Connection...</h3>
-        <p>Open Unity on Laptop/Quest 3 and connect using Key: <strong id="displayRoomKey">DOC-8921</strong></p>
+        <h3>Waiting for Peer Connection...</h3>
+        <p>Open this link or scan QR code on 2nd device / VR with Key: <strong id="displayRoomKey">DOC-8921</strong></p>
       </div>
 
       <!-- Top Overlay Bar -->
@@ -76,7 +84,7 @@
           <span id="activeRoomTag">DOC-8921</span>
         </div>
 
-        <button id="btnCopyLink" class="pill-btn"><i class="fa-solid fa-copy"></i> Copy Key</button>
+        <button id="btnCopyLink" class="pill-btn"><i class="fa-solid fa-copy"></i> Copy Link</button>
       </div>
 
       <!-- Floating Picture-in-Picture: Doctor Local Camera Stream -->
