@@ -4,46 +4,61 @@ This app is a **100% Real, Functional WebRTC P2P Video Application** connecting 
 
 ---
 
-## ❓ Frequently Asked Questions & Error Fixes
+## 📖 Complete Beginner's Guide: How to Create a FREE Firebase Database (Pin-to-Pin)
 
-### Q1: Why did I get `Unsafe attempt to load URL file:///` or `TypeError: Cannot read properties of null`?
+If you have **never used Firebase before**, follow these exact step-by-step instructions. It takes less than 2 minutes, is 100% free forever, and requires no credit card!
 
-> [!WARNING]
-> **Cause**: You double-clicked `index.html` directly from your hard drive (`file:///E:/...`).
-> Modern web browsers (Chrome, Safari, Edge) **block camera/mic permissions** (`getUserMedia`) and cross-origin Firebase DB scripts when opened as a local `file:///` for security reasons!
+### Step 1: Open Firebase Console
+1. Open your web browser and go to [https://console.firebase.google.com/](https://console.firebase.google.com/).
+2. Log in with any standard Google (Gmail) account.
 
-**The Fix**:
-- Host the folder on **GitHub Pages** (over HTTPS).
-- OR run a local web server (e.g. `npx serve`, VS Code Live Server, or Python `python -m http.server 8000`).
+### Step 2: Create a New Project
+1. Click the big **"+ Add project"** button (or "Create a project").
+2. Type a name for your project (e.g., `doctor-vr-app` or `my-telemedicine-app`).
+3. Click **Continue**.
+4. Disable **Google Analytics** (toggle switch off) to keep it simple, then click **Create project**.
+5. Wait 10 seconds for Google to set up your project, then click **Continue**.
+
+### Step 3: Create a Realtime Database Instance
+1. In the left-hand sidebar, click **Build** -> then select **Realtime Database**.
+2. Click the blue **"Create Database"** button in the center of the page.
+3. **Database Location**: Choose `Asia South (Mumbai)` or `United States` (closest to you), then click **Next**.
+4. **Security Rules**: Select **Start in test mode**, then click **Enable**.
+
+### Step 4: Copy Your Realtime Database URL
+1. You will now see your database dashboard.
+2. At the top of the page, copy the URL string that looks like this:
+   `https://your-project-name-default-rtdb.firebaseio.com` (or ending in `.firebasedatabase.app`).
+3. This is your **Database URL**!
+
+### Step 5: Make Database Rules Permanent (So It Never Expires)
+1. Click on the **Rules** tab at the top of your Realtime Database dashboard.
+2. Replace the text in the code editor with this exact JSON block:
+   ```json
+   {
+     "rules": {
+       ".read": true,
+       ".write": true
+     }
+   }
+   ```
+3. Click **Publish** at the top right. 
+4. Done! Your database is now active 24/7/365 with zero cost!
 
 ---
 
-### Q2: How do I create a NEW dedicated Firebase Database so I don't mess up AetherTalk?
+## 📡 Dual Signaling Engine Architecture (Firebase Multi-Network + Local PeerJS)
 
-To create a separate, 100% free Firebase Realtime Database in 2 minutes:
+This project supports **Dual-Signaling Modes**:
 
-1. Go to [console.firebase.google.com](https://console.firebase.google.com) and click **"Add project"**.
-2. Name it (e.g. `telemedicine-vr-db`) and click **Continue** (you can disable Google Analytics).
-3. In the left sidebar, click **Build > Realtime Database**.
-4. Click **Create Database** -> Select location (**Asia South / Mumbai** or **US Central**) -> Select **Start in Test Mode** (enables read/write for 30 days).
-5. Copy your Database URL (e.g. `https://telemedicine-vr-db-default-rtdb.firebaseio.com`).
-6. Paste this URL into the Doctor Mobile App input and Unity `UnityVRWebRTC.cs` script!
+1. **Firebase Engine (Multi-Network - Recommended)**:
+   - Uses Realtime Database for SDP offer/answer exchange.
+   - Works across **cellular 4G/5G, different Wi-Fi networks, and strict firewalls**.
+   - Includes automatic room cleanup on disconnect (`.onDisconnect().remove()`) so storage remains at 0 MB forever!
 
----
-
-### Q3: How can we bypass Signaling completely WITHOUT Node.js OR Firebase? (Just GitHub Pages & Unity)
-
-If you don't want to use Firebase or Node.js at all, you have 2 zero-cloud signaling options:
-
-#### Option A: Free Public PeerJS Server (`0.peerjs.com`) — 100% Zero-Cloud Setup
-- PeerJS is a free open-source WebRTC wrapper.
-- Uses public server `0.peerjs.com` (Requires 0 accounts, 0 databases, 0 Node servers).
-- In JS: `const peer = new Peer('DOC-8921')`
-- In Unity C#: Use Unity PeerJS wrapper.
-
-#### Option B: QR Code / WebRTC Direct SDP Link
-- Doctor mobile app generates a QR Code containing the WebRTC SDP offer string.
-- Meta Quest 3 camera scans the QR code directly, generates an answer QR code, and connects P2P!
+2. **PeerJS Engine (Same Local Wi-Fi)**:
+   - Preserves PeerJS signaling for local testing over the same Wi-Fi router.
+   - Configured with explicit Google STUN servers (`stun:stun.l.google.com:19302`) for local peer discovery.
 
 ---
 
@@ -51,13 +66,11 @@ If you don't want to use Firebase or Node.js at all, you have 2 zero-cloud signa
 
 1. Push this repository to GitHub.
 2. Go to **Repo Settings > Pages**.
-3. Under **Source**, select `main` branch and `/ (root)` or `/vr-doctor-consultation-demo`.
+3. Under **Source**, select `main` branch and `/ (root)`.
 4. Open the GitHub Pages URL on your mobile phone:
-   `https://<your-username>.github.io/walkietalkie/vr-doctor-consultation-demo/`
-5. Enter a Doctor Room Key (e.g. `DOC-8921`) and click **Start Doctor Session**.
-6. The Doctor Mobile screen turns into a **Full-Screen Video Call View**:
-   - Doctor Camera = Top-Left Floating Picture-in-Picture.
-   - Full Screen = Waits for live Unity VR video stream.
+   `https://r2dapps.github.io/web2rvrwebrtc/`
+5. Select **Doctor Role** -> Click **Create Room & Start Camera**.
+6. Open on **2nd Device / Patient / VR** -> Select **Patient Role** -> Enter Room Key -> Click **Join Consultation Room**!
 
 ---
 
