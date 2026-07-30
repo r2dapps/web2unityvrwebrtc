@@ -1,12 +1,14 @@
-// Web2RVR WebRTC Engine - Proven PeerJS + Firebase Presence Architecture (From WalkieTalkie Engine)
+// Pure Native WebRTC (RTCPeerConnection) + Real Firebase Signaling Engine
 
-const FIREBASE_DB_URL = 'https://web2rvrwebrtc-default-rtdb.firebaseio.com';
+const DEFAULT_FIREBASE_DB_URL = 'https://walkietalkie-c0f03-default-rtdb.asia-southeast1.firebasedatabase.app';
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' }
-];
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ]
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
@@ -25,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnNewKey = document.getElementById('btnNewKey');
   const btnCreateRoom = document.getElementById('btnCreateRoom');
   const btnJoinAsPatient = document.getElementById('btnJoinAsPatient');
+  const customFirebaseInput = document.getElementById('customFirebaseInput');
   
   const displayRoomKey = document.getElementById('displayRoomKey');
   const activeRoomTag = document.getElementById('activeRoomTag');
@@ -42,29 +45,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnEndSession = document.getElementById('btnEndSession');
 
   // State
-  let peer = null;
+  let pc = null;
   let firebaseDb = null;
   let localStream = null;
-  let myPeerId = '';
   let currentRoomId = '';
   let userRole = 'doctor';
   let isAudioMuted = false;
   let isVideoOff = false;
   let facingMode = 'user';
-  let connectedCalls = {};
-  let presenceRef = null;
-
-  // Initialize Firebase Realtime DB
-  try {
-    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-      firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
-    }
-    if (typeof firebase !== 'undefined') {
-      firebaseDb = firebase.database();
-    }
-  } catch (e) {
-    console.warn("Firebase Init Exception:", e);
-  }
 
   // 1. Expiry Time Calculation (12:00 AM IST)
   function updateExpiryDisplay() {
@@ -151,118 +139,133 @@ document.addEventListener('DOMContentLoaded', () => {
     if (startScreen) startScreen.style.display = 'none';
     if (callScreen) callScreen.style.display = 'flex';
 
-    await initPeerEngine(role);
+    const dbUrl = (customFirebaseInput && customFirebaseInput.value.trim().startsWith('https://'))
+      ? customFirebaseInput.value.trim()
+      : DEFAULT_FIREBASE_DB_URL;
+
+    await initNativeWebRTC(role, dbUrl);
   }
 
-  // --- PROVEN WALKIE-TALKIE PEER & PRESENCE ENGINE ---
-  async function initPeerEngine(role) {
+  // --- PURE NATIVE WEBRTC (RTCPeerConnection) + FIREBASE SIGNALING ---
+  async function initNativeWebRTC(role, dbUrl) {
+    console.log(`🔥 Initializing Native WebRTC [Role: ${role}] using Firebase DB:`, dbUrl);
+
+    try {
+      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+        firebase.initializeApp({ databaseURL: dbUrl });
+      }
+      if (typeof firebase !== 'undefined') {
+        firebaseDb = firebase.database();
+      }
+    } catch (e) {
+      console.error("Firebase Init Error:", e);
+    }
+
+    pc = new RTCPeerConnection(ICE_SERVERS);
     await acquireLocalCamera();
 
-    if (typeof Peer === 'undefined') {
-      alert("PeerJS SDK error. Please check your network connection.");
+    // Attach local camera tracks to PeerConnection
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
+    // Remote Track Receiver
+    pc.ontrack = (event) => {
+      console.log("🎉 SUCCESS! Native WebRTC Remote Video Track Received!", event.streams);
+      if (event.streams && event.streams[0] && remoteVideo) {
+        remoteVideo.srcObject = event.streams[0];
+        if (connectingOverlay) connectingOverlay.style.display = 'none';
+      }
+    };
+
+    if (!firebaseDb) {
+      alert("Firebase Database connection failed!");
       return;
     }
 
-    // Generate Unique Peer ID (e.g. w2r-DOC8921-doctor-x9a2k)
     const sRoom = currentRoomId.replace(/[^A-Z0-9]/g, '');
-    const rand5 = Math.random().toString(36).substring(2, 7);
-    myPeerId = `w2r-${sRoom}-${role}-${rand5}`;
+    const roomRef = firebaseDb.ref(`web2rvr_rooms/${sRoom}`);
+    const offerRef = roomRef.child('offer');
+    const answerRef = roomRef.child('answer');
+    const doctorCandidatesRef = roomRef.child('doctor_candidates');
+    const patientCandidatesRef = roomRef.child('patient_candidates');
 
-    console.log("⚡ My Unique Peer ID:", myPeerId);
+    if (role === 'doctor') {
+      // DOCTOR (CREATOR): Generates SDP Offer
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          doctorCandidatesRef.push(event.candidate.toJSON());
+        }
+      };
 
-    peer = new Peer(myPeerId, {
-      config: { iceServers: ICE_SERVERS },
-      debug: 1
-    });
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-    peer.on('open', (id) => {
-      console.log("✅ Peer Connected to Server. ID:", id);
-      registerPresenceAndListen();
-    });
-
-    // Handle Incoming Call
-    peer.on('call', (call) => {
-      console.log("📞 Incoming Peer Call from:", call.peer);
-      call.answer(localStream);
-      handleCallStream(call);
-    });
-
-    // Handle Incoming Data Connection
-    peer.on('connection', (conn) => {
-      console.log("💬 Incoming Data Connection from:", conn.peer);
-      conn.on('open', () => {
-        if (connectingOverlay) connectingOverlay.style.display = 'none';
+      console.log("📤 Doctor publishing SDP Offer to Firebase...");
+      await offerRef.set({
+        sdp: offer.sdp,
+        type: offer.type,
+        timestamp: Date.now()
       });
-    });
 
-    peer.on('error', (err) => {
-      console.error("Peer Engine Error:", err);
-    });
-  }
+      // Listen for Patient's SDP Answer from Firebase
+      answerRef.on('value', async (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.sdp && !pc.currentRemoteDescription) {
+          console.log("📥 Doctor received SDP Answer from Patient!");
+          await pc.setRemoteDescription(new RTCSessionDescription(data));
+        }
+      });
 
-  function handleCallStream(call) {
-    connectedCalls[call.peer] = call;
+      // Listen for Patient ICE Candidates
+      patientCandidatesRef.on('child_added', async (snapshot) => {
+        const candidateData = snapshot.val();
+        if (candidateData) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+          } catch (e) { console.error("ICE Candidate Error:", e); }
+        }
+      });
 
-    call.on('stream', (remoteStream) => {
-      console.log("🎥 REMOTE STREAM BOND SUCCESSFUL! Received from:", call.peer);
-      if (remoteVideo) {
-        remoteVideo.srcObject = remoteStream;
+    } else {
+      // PATIENT / VR (JOINER): Reads Offer & Sends Answer
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          patientCandidatesRef.push(event.candidate.toJSON());
+        }
+      };
+
+      console.log("🔍 Patient fetching Doctor SDP Offer from Firebase...");
+      const offerSnap = await offerRef.once('value');
+      const offerData = offerSnap.val();
+
+      if (!offerData || !offerData.sdp) {
+        alert(`Room "${currentRoomId}" not found or Doctor has not created the room yet! Please check the key.`);
+        location.reload();
+        return;
       }
-      if (connectingOverlay) {
-        connectingOverlay.style.display = 'none';
-      }
-    });
-  }
 
-  function dialPeer(targetPeerId) {
-    if (!peer || targetPeerId === myPeerId || connectedCalls[targetPeerId]) return;
-    console.log("🚀 Dialing Target Peer:", targetPeerId);
+      await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
-    // Establish Data & Media Call
-    const conn = peer.connect(targetPeerId, { reliable: true });
-    if (conn) {
-      conn.on('open', () => {
-        if (connectingOverlay) connectingOverlay.style.display = 'none';
+      console.log("📤 Patient publishing SDP Answer to Firebase...");
+      await answerRef.set({
+        sdp: answer.sdp,
+        type: answer.type,
+        timestamp: Date.now()
+      });
+
+      // Listen for Doctor ICE Candidates
+      doctorCandidatesRef.on('child_added', async (snapshot) => {
+        const candidateData = snapshot.val();
+        if (candidateData) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+          } catch (e) { console.error("ICE Candidate Error:", e); }
+        }
       });
     }
-
-    const call = peer.call(targetPeerId, localStream);
-    if (call) {
-      handleCallStream(call);
-    }
-  }
-
-  // Register Peer Presence in Firebase Room Directory
-  function registerPresenceAndListen() {
-    if (!firebaseDb) return;
-
-    const sRoom = currentRoomId.replace(/[^A-Z0-9]/g, '');
-    const roomPeersRef = firebaseDb.ref(`telemedicine_rooms/${sRoom}/peers`);
-    presenceRef = roomPeersRef.child(myPeerId);
-
-    // Register presence & cleanup on disconnect
-    presenceRef.set({
-      peerId: myPeerId,
-      role: userRole,
-      timestamp: Date.now()
-    });
-    presenceRef.onDisconnect().remove();
-
-    // Listen for existing and new peers joining room
-    roomPeersRef.on('child_added', (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.peerId && data.peerId !== myPeerId) {
-        console.log("👤 Room Presence Detected Peer:", data.peerId);
-        dialPeer(data.peerId);
-      }
-    });
-
-    roomPeersRef.on('child_removed', (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.peerId && connectedCalls[data.peerId]) {
-        delete connectedCalls[data.peerId];
-      }
-    });
   }
 
   async function acquireLocalCamera() {
@@ -273,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (localVideo) localVideo.srcObject = localStream;
     } catch (err) {
-      console.warn("Camera busy or unavailable. Using synthetic fallback stream for testing...", err);
+      console.warn("Camera busy or blocked. Using synthetic stream fallback...", err);
       localStream = createFallbackCanvasStream();
       if (localVideo) localVideo.srcObject = localStream;
     }
@@ -292,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 22px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(userRole === 'doctor' ? 'Doctor Stream' : 'Patient/VR Stream', canvas.width / 2, canvas.height / 2);
+      ctx.fillText(userRole === 'doctor' ? 'Doctor Webcam Stream' : 'Patient/VR Stream', canvas.width / 2, canvas.height / 2);
     }, 100);
 
     return canvas.captureStream(30);
@@ -338,8 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnEndSession) {
     btnEndSession.addEventListener('click', () => {
-      if (presenceRef) presenceRef.remove();
-      if (peer) peer.destroy();
+      if (pc) pc.close();
       if (localStream) localStream.getTracks().forEach(t => t.stop());
       window.location.href = window.location.pathname;
     });

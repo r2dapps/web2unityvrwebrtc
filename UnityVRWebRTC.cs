@@ -6,8 +6,8 @@ using UnityEngine.Networking;
 using Unity.WebRTC;
 
 /// <summary>
-/// Unity C# WebRTC Peer Presence Handler (Meta Quest 3 / Quest 3S & PC VR)
-/// Adapted from WalkieTalkie peerManager.ts architecture.
+/// Native Unity C# WebRTC Gateway for Meta Quest 3 & PC VR
+/// Streams live VR camera feed to Doctor Mobile Web and receives Doctor HD Video.
 /// </summary>
 public class UnityVRWebRTC : MonoBehaviour
 {
@@ -20,20 +20,11 @@ public class UnityVRWebRTC : MonoBehaviour
     public int streamHeight = 720;
 
     [Header("Clinic Session Configuration")]
-    public string firebaseDatabaseUrl = "https://web2rvrwebrtc-default-rtdb.firebaseio.com";
+    public string firebaseDatabaseUrl = "https://walkietalkie-c0f03-default-rtdb.asia-southeast1.firebasedatabase.app";
     public string roomKey = "DOC-8921"; // Doctor Room Key
 
     private RTCPeerConnection peerConnection;
     private VideoStreamTrack localVideoTrack;
-    private string myPeerId;
-
-    [Serializable]
-    public class PeerPresence
-    {
-        public string peerId;
-        public string role;
-        public long timestamp;
-    }
 
     [Serializable]
     public class SDPPayload
@@ -42,19 +33,23 @@ public class UnityVRWebRTC : MonoBehaviour
         public string type;
     }
 
+    [Serializable]
+    public class IceCandidatePayload
+    {
+        public string candidate;
+        public string sdpMid;
+        public int sdpMLineIndex;
+    }
+
     void Start()
     {
-        // 1. Generate Unique VR Peer ID (e.g. w2r-DOC8921-vr-9a2f)
         string sRoom = roomKey.Replace("-", "").ToUpper();
-        string rand = UnityEngine.Random.Range(1000, 9999).ToString();
-        myPeerId = $"w2r-{sRoom}-vr-{rand}";
-
         StartCoroutine(InitializeWebRTCFlow(sRoom));
     }
 
     private IEnumerator InitializeWebRTCFlow(string sRoom)
     {
-        // 2. Initialize WebRTC Subsystem
+        // 1. Initialize Unity WebRTC
         WebRTC.Initialize();
 
         RTCConfiguration config = new RTCConfiguration
@@ -70,33 +65,36 @@ public class UnityVRWebRTC : MonoBehaviour
         peerConnection = new RTCPeerConnection(ref config);
         peerConnection.OnTrack = OnTrackReceived;
 
-        // 3. Add VR Camera Stream
+        // 2. Add Local VR Camera Video Track
         if (vrStreamCamera != null)
         {
             localVideoTrack = vrStreamCamera.CaptureStreamTrack(streamWidth, streamHeight, 30);
             peerConnection.AddTrack(localVideoTrack);
-            Debug.Log("[Unity VR] VR Camera track added.");
+            Debug.Log("[Unity VR] Local VR Camera Track added.");
         }
 
-        // 4. Register VR Presence in Firebase Room Directory
-        PeerPresence presence = new PeerPresence
+        // 3. ICE Candidate Callback to Firebase
+        peerConnection.OnIceCandidate = candidate =>
         {
-            peerId = myPeerId,
-            role = "vr",
-            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            if (!string.IsNullOrEmpty(candidate.Candidate))
+            {
+                IceCandidatePayload payload = new IceCandidatePayload
+                {
+                    candidate = candidate.Candidate,
+                    sdpMid = candidate.SdpMid,
+                    sdpMLineIndex = candidate.SdpMLineIndex ?? 0
+                };
+                StartCoroutine(PostFirebaseData($"web2rvr_rooms/{sRoom}/patient_candidates.json", JsonUtility.ToJson(payload)));
+            }
         };
-        string presenceJson = JsonUtility.ToJson(presence);
-        yield return StartCoroutine(PutFirebaseData($"telemedicine_rooms/{sRoom}/peers/{myPeerId}.json", presenceJson));
 
-        Debug.Log($"[Unity VR] Registered presence in room {sRoom} with ID: {myPeerId}");
-
-        // 5. Poll for Doctor Offer in Room
-        string offerUrl = $"{firebaseDatabaseUrl}/telemedicine_rooms/{sRoom}/offers.json";
+        // 4. Poll for Doctor's SDP Offer
+        string offerUrl = $"{firebaseDatabaseUrl}/web2rvr_rooms/{sRoom}/offer.json";
         SDPPayload offerPayload = null;
 
         while (offerPayload == null || string.IsNullOrEmpty(offerPayload.sdp))
         {
-            Debug.Log($"[Unity VR] Waiting for Doctor Room Offer at {sRoom}...");
+            Debug.Log($"[Unity VR] Waiting for Doctor Room Offer at key: {sRoom}...");
             using (UnityWebRequest www = UnityWebRequest.Get(offerUrl))
             {
                 yield return www.SendWebRequest();
@@ -108,7 +106,7 @@ public class UnityVRWebRTC : MonoBehaviour
             yield return new WaitForSeconds(1.5f);
         }
 
-        // 6. Set Remote Offer & Create Answer
+        // 5. Set Remote Description (Doctor Offer)
         RTCSessionDescription offerDesc = new RTCSessionDescription
         {
             type = RTCSdpType.Offer,
@@ -117,6 +115,7 @@ public class UnityVRWebRTC : MonoBehaviour
         var setRemoteOp = peerConnection.SetRemoteDescription(ref offerDesc);
         yield return setRemoteOp;
 
+        // 6. Create Answer
         var createAnswerOp = peerConnection.CreateAnswer();
         yield return createAnswerOp;
         RTCSessionDescription answerDesc = createAnswerOp.Desc;
@@ -124,22 +123,21 @@ public class UnityVRWebRTC : MonoBehaviour
         var setLocalOp = peerConnection.SetLocalDescription(ref answerDesc);
         yield return setLocalOp;
 
-        // 7. Send Answer to Doctor
+        // 7. Publish SDP Answer to Firebase
         SDPPayload answerPayload = new SDPPayload
         {
             sdp = answerDesc.sdp,
             type = "answer"
         };
-        yield return StartCoroutine(PutFirebaseData($"telemedicine_rooms/{sRoom}/answers.json", JsonUtility.ToJson(answerPayload)));
-        Debug.Log("[Unity VR] WebRTC SDP Answer sent successfully!");
+        yield return StartCoroutine(PutFirebaseData($"web2rvr_rooms/{sRoom}/answer.json", JsonUtility.ToJson(answerPayload)));
+        Debug.Log("[Unity VR] WebRTC SDP Answer published to Firebase successfully!");
     }
 
     private void OnTrackReceived(RTCTrackEvent evt)
     {
         if (evt.Track is VideoStreamTrack videoTrack)
         {
-            Debug.Log("[Unity VR] SUCCESS! Doctor Video Track Connected!");
-
+            Debug.Log("[Unity VR] SUCCESS! Connected to Doctor Video Track!");
             videoTrack.OnVideoReceived += tex =>
             {
                 if (doctorDisplayMaterial != null)
@@ -154,6 +152,19 @@ public class UnityVRWebRTC : MonoBehaviour
     {
         string url = $"{firebaseDatabaseUrl}/{path}";
         using (UnityWebRequest www = new UnityWebRequest(url, "PUT"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
+            www.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            www.downloadHandler = new DownloadHandlerBuffer();
+            www.SetRequestHeader("Content-Type", "application/json");
+            yield return www.SendWebRequest();
+        }
+    }
+
+    private IEnumerator PostFirebaseData(string path, string json)
+    {
+        string url = $"{firebaseDatabaseUrl}/{path}";
+        using (UnityWebRequest www = new UnityWebRequest(url, "POST"))
         {
             byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
             www.uploadHandler = new UploadHandlerRaw(bodyRaw);
