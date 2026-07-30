@@ -1,4 +1,4 @@
-// Pure Native WebRTC (RTCPeerConnection) + Real Firebase Signaling Engine
+// Pure Native WebRTC (RTCPeerConnection) + Real Firebase Signaling Engine with Auto-Cleanup
 
 const DEFAULT_FIREBASE_DB_URL = 'https://walkietalkie-c0f03-default-rtdb.asia-southeast1.firebasedatabase.app';
 
@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isAudioMuted = false;
   let isVideoOff = false;
   let facingMode = 'user';
+  let activeRoomRef = null;
 
   // 1. Expiry Time Calculation (12:00 AM IST)
   function updateExpiryDisplay() {
@@ -146,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await initNativeWebRTC(role, dbUrl);
   }
 
-  // --- PURE NATIVE WEBRTC (RTCPeerConnection) + FIREBASE SIGNALING ---
+  // --- PURE NATIVE WEBRTC (RTCPeerConnection) + AUTOMATIC FIREBASE CLEANUP ---
   async function initNativeWebRTC(role, dbUrl) {
     console.log(`🔥 Initializing Native WebRTC [Role: ${role}] using Firebase DB:`, dbUrl);
 
@@ -164,12 +165,10 @@ document.addEventListener('DOMContentLoaded', () => {
     pc = new RTCPeerConnection(ICE_SERVERS);
     await acquireLocalCamera();
 
-    // Attach local camera tracks to PeerConnection
     if (localStream) {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
-    // Remote Track Receiver
     pc.ontrack = (event) => {
       console.log("🎉 SUCCESS! Native WebRTC Remote Video Track Received!", event.streams);
       if (event.streams && event.streams[0] && remoteVideo) {
@@ -184,14 +183,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const sRoom = currentRoomId.replace(/[^A-Z0-9]/g, '');
-    const roomRef = firebaseDb.ref(`web2rvr_rooms/${sRoom}`);
-    const offerRef = roomRef.child('offer');
-    const answerRef = roomRef.child('answer');
-    const doctorCandidatesRef = roomRef.child('doctor_candidates');
-    const patientCandidatesRef = roomRef.child('patient_candidates');
+    activeRoomRef = firebaseDb.ref(`web2rvr_rooms/${sRoom}`);
+    
+    // AUTO CLEANUP: When Doctor closes browser tab, auto-delete room data from Firebase!
+    if (role === 'doctor') {
+      activeRoomRef.onDisconnect().remove();
+    }
+
+    const offerRef = activeRoomRef.child('offer');
+    const answerRef = activeRoomRef.child('answer');
+    const doctorCandidatesRef = activeRoomRef.child('doctor_candidates');
+    const patientCandidatesRef = activeRoomRef.child('patient_candidates');
 
     if (role === 'doctor') {
-      // DOCTOR (CREATOR): Generates SDP Offer
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           doctorCandidatesRef.push(event.candidate.toJSON());
@@ -201,23 +205,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      console.log("📤 Doctor publishing SDP Offer to Firebase...");
       await offerRef.set({
         sdp: offer.sdp,
         type: offer.type,
         timestamp: Date.now()
       });
 
-      // Listen for Patient's SDP Answer from Firebase
       answerRef.on('value', async (snapshot) => {
         const data = snapshot.val();
         if (data && data.sdp && !pc.currentRemoteDescription) {
-          console.log("📥 Doctor received SDP Answer from Patient!");
           await pc.setRemoteDescription(new RTCSessionDescription(data));
         }
       });
 
-      // Listen for Patient ICE Candidates
       patientCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
         if (candidateData) {
@@ -228,14 +228,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
     } else {
-      // PATIENT / VR (JOINER): Reads Offer & Sends Answer
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           patientCandidatesRef.push(event.candidate.toJSON());
         }
       };
 
-      console.log("🔍 Patient fetching Doctor SDP Offer from Firebase...");
       const offerSnap = await offerRef.once('value');
       const offerData = offerSnap.val();
 
@@ -249,14 +247,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      console.log("📤 Patient publishing SDP Answer to Firebase...");
       await answerRef.set({
         sdp: answer.sdp,
         type: answer.type,
         timestamp: Date.now()
       });
 
-      // Listen for Doctor ICE Candidates
       doctorCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
         if (candidateData) {
@@ -341,6 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnEndSession) {
     btnEndSession.addEventListener('click', () => {
+      if (activeRoomRef) activeRoomRef.remove(); // INSTANT CLEANUP ON SESSION END
       if (pc) pc.close();
       if (localStream) localStream.getTracks().forEach(t => t.stop());
       window.location.href = window.location.pathname;
