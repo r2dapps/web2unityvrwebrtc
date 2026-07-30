@@ -1,0 +1,346 @@
+/* Full Mobile Screen WebRTC VR Telemedicine Interface */
+:root {
+  --bg-dark: #090d16;
+  --bg-card: #151d30;
+  --accent-cyan: #06b6d4;
+  --accent-emerald: #10b981;
+  --accent-rose: #f43f5e;
+  --text-main: #f8fafc;
+  --text-[#94a3b8]: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+
+.screen-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Screen 1: Start Room Screen */
+#startScreen {
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: radial-gradient(circle at 50% 30%, #1a243a 0%, #090d16 100%);
+}
+
+.start-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(21, 29, 48, 0.85);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.brand-logo {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  color: #000;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+}
+
+.start-card h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.subtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: -0.5rem;
+}
+
+.form-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-group input, .select-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.select-input option {
+  background: #151d30;
+  color: #fff;
+}
+
+.input-with-btn {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-btn input {
+  font-family: monospace;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 1px;
+}
+
+.btn-icon {
+  padding: 0 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.expiry-info {
+  font-size: 0.72rem;
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.btn {
+  padding: 0.85rem 1.5rem;
+  border-radius: 12px;
+  border: none;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  transition: all 0.2s ease;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-cyan), #0284c7);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.4);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Screen 2: Full Screen Mobile Video Call View */
+#callScreen {
+  position: relative;
+  background: #000;
+}
+
+.vr-stream-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Background Full Screen Video: VR Feed */
+.vr-video-full {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #050811;
+}
+
+.vr-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(9, 13, 22, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  z-index: 5;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(6, 182, 212, 0.2);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 1s infinite linear;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Top Overlay Bar */
+.top-overlay {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 20;
+}
+
+.room-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-emerald);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-emerald);
+}
+
+.pill-btn {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* Floating Doctor PiP Thumbnail */
+.floating-pip {
+  position: absolute;
+  top: 4.25rem;
+  left: 1rem;
+  width: 110px;
+  height: 155px;
+  background: #111;
+  border: 2px solid var(--accent-cyan);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
+  z-index: 25;
+}
+
+.floating-pip video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pip-label {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 0.65rem;
+  text-align: center;
+  border-radius: 4px;
+  padding: 1px 0;
+}
+
+/* Bottom Controls Bar */
+.bottom-controls {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1.25rem;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  padding: 0.75rem 1.5rem;
+  border-radius: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  z-index: 30;
+}
+
+.control-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.control-btn:active {
+  transform: scale(0.92);
+}
+
+.control-btn.off {
+  background: rgba(244, 63, 94, 0.2);
+  color: var(--accent-rose);
+  border: 1px solid rgba(244, 63, 94, 0.4);
+}
+
+.btn-end {
+  background: var(--accent-rose);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.4);
+}

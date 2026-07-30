@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Doctor VR WebRTC Consultation Portal (Web2RVR)</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Firebase App & Database SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <!-- PeerJS SDK for Zero-Cloud Signaling Option -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <!-- Screen 1: Room Start Screen -->
+  <div id="startScreen" class="screen-container">
+    <div class="card start-card">
+      <div class="brand-logo">
+        <i class="fa-solid fa-user-md"></i>
+      </div>
+      <h2>Doctor VR Consultation</h2>
+      <p class="subtitle">Multi-Signaling WebRTC Gateway for Meta Quest 3 & Unity</p>
+
+      <!-- Signaling Provider Switcher -->
+      <div class="form-group">
+        <label><i class="fa-solid fa-satellite-dish"></i> Signaling Engine</label>
+        <select id="signalingModeSelect" class="select-input">
+          <option value="firebase">Firebase Realtime DB (Recommended - Works Across Networks)</option>
+          <option value="peerjs">PeerJS Server (Zero Account / Cloud)</option>
+          <option value="qrcode">Manual QR Code / SDP Copy</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="roomInput"><i class="fa-solid fa-key"></i> Doctor Room Key</label>
+        <div class="input-with-btn">
+          <input type="text" id="roomInput" value="DOC-8921" placeholder="Enter Room Key">
+          <button id="btnGenerateKey" class="btn-icon" title="Generate New Key"><i class="fa-solid fa-rotate"></i></button>
+        </div>
+        <div class="expiry-info">
+          <i class="fa-solid fa-clock"></i> Valid until <span id="expiryTimeText">12:00 AM IST</span>
+        </div>
+      </div>
+
+      <div class="form-group" id="firebaseConfigBox">
+        <label for="firebaseUrlInput"><i class="fa-solid fa-database"></i> Firebase DB URL</label>
+        <input type="text" id="firebaseUrlInput" value="https://aethertalk-default-rtdb.firebaseio.com" placeholder="https://your-app.firebaseio.com">
+      </div>
+
+      <button id="btnJoinRoom" class="btn btn-primary btn-block">
+        <i class="fa-solid fa-circle-play"></i> Start Doctor Session
+      </button>
+    </div>
+  </div>
+
+  <!-- Screen 2: Active Video Call Screen (Full Screen Mobile Layout) -->
+  <div id="callScreen" class="screen-container" style="display: none;">
+    
+    <!-- Full Screen Background: Incoming VR Stream from Unity/Quest 3 -->
+    <div class="vr-stream-container">
+      <video id="remoteVrVideo" autoplay playsinline class="vr-video-full"></video>
+      
+      <!-- Placeholder when VR is not yet connected -->
+      <div id="vrConnectingOverlay" class="vr-overlay font-sans">
+        <div class="spinner"></div>
+        <h3>Waiting for Unity VR Connection...</h3>
+        <p>Open Unity on Laptop/Quest 3 and connect using Key: <strong id="displayRoomKey">DOC-8921</strong></p>
+      </div>
+
+      <!-- Top Overlay Bar -->
+      <div class="top-overlay">
+        <div class="room-pill">
+          <span class="pulse-dot"></span>
+          <span id="activeRoomTag">DOC-8921</span>
+        </div>
+
+        <button id="btnCopyLink" class="pill-btn"><i class="fa-solid fa-copy"></i> Copy Key</button>
+      </div>
+
+      <!-- Floating Picture-in-Picture: Doctor Local Camera Stream -->
+      <div class="floating-pip" id="doctorPip">
+        <video id="localDoctorVideo" autoplay playsinline muted></video>
+        <div class="pip-label">Doctor (You)</div>
+      </div>
+
+      <!-- Floating Controls Bar (Bottom) -->
+      <div class="bottom-controls">
+        <button id="btnToggleMic" class="control-btn"><i class="fa-solid fa-microphone"></i></button>
+        <button id="btnToggleCam" class="control-btn"><i class="fa-solid fa-video"></i></button>
+        <button id="btnFlipCam" class="control-btn"><i class="fa-solid fa-camera-rotate"></i></button>
+        <button id="btnEndSession" class="control-btn btn-end"><i class="fa-solid fa-phone-slash"></i></button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
