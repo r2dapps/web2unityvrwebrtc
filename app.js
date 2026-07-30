@@ -1,6 +1,4 @@
-// Production Web2RVR WebRTC Logic (Doctor Host vs Patient Joiner)
-
-const FIREBASE_DB_URL = 'https://web2rvrwebrtc-default-rtdb.firebaseio.com';
+// Web2RVR WebRTC Logic (Zero-Setup PeerJS Default + Optional Custom Firebase)
 
 const ICE_SERVERS = {
   iceServers: [
@@ -27,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnNewKey = document.getElementById('btnNewKey');
   const btnCreateRoom = document.getElementById('btnCreateRoom');
   const btnJoinAsPatient = document.getElementById('btnJoinAsPatient');
+  const customFirebaseInput = document.getElementById('customFirebaseInput');
   
   const displayRoomKey = document.getElementById('displayRoomKey');
   const activeRoomTag = document.getElementById('activeRoomTag');
@@ -45,25 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // State
   let pc = null;
+  let peerInstance = null;
   let firebaseDb = null;
   let localStream = null;
   let currentRoomId = '';
-  let userRole = 'doctor'; // 'doctor' (host) or 'patient' (joiner)
+  let userRole = 'doctor';
   let isAudioMuted = false;
   let isVideoOff = false;
   let facingMode = 'user';
-
-  // Initialize Firebase Realtime DB for Signaling
-  try {
-    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-      firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
-    }
-    if (typeof firebase !== 'undefined') {
-      firebaseDb = firebase.database();
-    }
-  } catch (e) {
-    console.warn("Firebase Init fallback:", e);
-  }
 
   // 1. Expiry Time Calculation (12:00 AM IST)
   function updateExpiryDisplay() {
@@ -120,7 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (patientRoomInput) patientRoomInput.value = roomFromUrl.toUpperCase();
     if (tabPatient) tabPatient.click();
     
-    // Auto-Join immediately if URL contains room parameter
     setTimeout(() => {
       startSession('patient');
     }, 400);
@@ -151,16 +138,86 @@ document.addEventListener('DOMContentLoaded', () => {
     if (startScreen) startScreen.style.display = 'none';
     if (callScreen) callScreen.style.display = 'flex';
 
-    await initWebRTC(role);
+    const customDbUrl = customFirebaseInput ? customFirebaseInput.value.trim() : '';
+
+    if (customDbUrl && customDbUrl.startsWith('https://')) {
+      // Use Custom Firebase Database if provided
+      await initFirebaseWebRTC(role, customDbUrl);
+    } else {
+      // DEFAULT: Zero-Setup PeerJS Signaling (Works Out of the Box!)
+      await initPeerJS(role);
+    }
   }
 
-  // 6. Core WebRTC Connection Engine
-  async function initWebRTC(role) {
+  // --- ZERO-SETUP PEERJS ENGINE (Default) ---
+  async function initPeerJS(role) {
+    await acquireLocalCamera();
+
+    if (typeof Peer === 'undefined') {
+      alert("PeerJS SDK loading error. Please check your internet connection.");
+      return;
+    }
+
+    const hostPeerId = `web2rvr-${currentRoomId}-host`;
+
+    if (role === 'doctor') {
+      // Doctor creates the host peer
+      peerInstance = new Peer(hostPeerId, { config: ICE_SERVERS });
+
+      peerInstance.on('open', (id) => {
+        console.log("Doctor Host Peer Created:", id);
+      });
+
+      peerInstance.on('call', (call) => {
+        console.log("Incoming call from Patient/VR!");
+        call.answer(localStream);
+        call.on('stream', (remoteStream) => {
+          if (remoteVideo) remoteVideo.srcObject = remoteStream;
+          if (connectingOverlay) connectingOverlay.style.display = 'none';
+        });
+      });
+
+      peerInstance.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+          // Room ID already taken, recreate
+          console.warn("Room ID already active.");
+        }
+      });
+    } else {
+      // Patient / VR joins the doctor host peer
+      const joinerId = `web2rvr-${currentRoomId}-guest-${Math.floor(Math.random() * 1000)}`;
+      peerInstance = new Peer(joinerId, { config: ICE_SERVERS });
+
+      peerInstance.on('open', () => {
+        console.log("Patient Joiner Peer Created. Calling Doctor Host:", hostPeerId);
+        const call = peerInstance.call(hostPeerId, localStream);
+
+        call.on('stream', (remoteStream) => {
+          console.log("Connected to Doctor Stream!");
+          if (remoteVideo) remoteVideo.srcObject = remoteStream;
+          if (connectingOverlay) connectingOverlay.style.display = 'none';
+        });
+      });
+    }
+  }
+
+  // --- OPTIONAL CUSTOM FIREBASE ENGINE ---
+  async function initFirebaseWebRTC(role, dbUrl) {
+    try {
+      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+        firebase.initializeApp({ databaseURL: dbUrl });
+      }
+      if (typeof firebase !== 'undefined') {
+        firebaseDb = firebase.database();
+      }
+    } catch (e) {
+      console.warn("Firebase Exception:", e);
+    }
+
     pc = new RTCPeerConnection(ICE_SERVERS);
     await acquireLocalCamera();
 
     pc.ontrack = (event) => {
-      console.log("Remote Stream Connected!", event.streams);
       if (event.streams && event.streams[0] && remoteVideo) {
         remoteVideo.srcObject = event.streams[0];
         if (connectingOverlay) connectingOverlay.style.display = 'none';
@@ -176,43 +233,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const vrCandidatesRef = roomRef.child('vr_candidates');
 
     if (role === 'doctor') {
-      // DOCTOR (HOST) FLOW: Creates Offer
       pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          doctorCandidatesRef.push(event.candidate.toJSON());
-        }
+        if (event.candidate) doctorCandidatesRef.push(event.candidate.toJSON());
       };
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await offersRef.set({ sdp: offer.sdp, type: offer.type, timestamp: Date.now() });
 
-      // Listen for Patient/VR Answer
       answersRef.on('value', async (snapshot) => {
         const data = snapshot.val();
         if (data && data.sdp && !pc.currentRemoteDescription) {
-          console.log("Received Answer from Patient/VR!");
           await pc.setRemoteDescription(new RTCSessionDescription(data));
         }
       });
 
-      // Listen for Patient/VR Candidates
       vrCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
         if (candidateData) {
           try { await pc.addIceCandidate(new RTCIceCandidate(candidateData)); } catch (e) {}
         }
       });
-
     } else {
-      // PATIENT (JOINER) FLOW: Reads Offer & Sends Answer
       pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          vrCandidatesRef.push(event.candidate.toJSON());
-        }
+        if (event.candidate) vrCandidatesRef.push(event.candidate.toJSON());
       };
 
-      // Read Doctor Offer
       const offerSnap = await offersRef.once('value');
       const offerData = offerSnap.val();
 
@@ -228,7 +274,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       await answersRef.set({ sdp: answer.sdp, type: answer.type, timestamp: Date.now() });
 
-      // Listen for Doctor Candidates
       doctorCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
         if (candidateData) {
@@ -253,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 7. Copy Room Key
+  // 6. Copy Room Key
   if (btnCopyKey) {
     btnCopyKey.addEventListener('click', () => {
       navigator.clipboard.writeText(currentRoomId);
@@ -294,6 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnEndSession) {
     btnEndSession.addEventListener('click', () => {
       if (pc) pc.close();
+      if (peerInstance) peerInstance.destroy();
       if (localStream) localStream.getTracks().forEach(t => t.stop());
       window.location.href = window.location.pathname;
     });
