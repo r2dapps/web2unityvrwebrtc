@@ -1,4 +1,6 @@
-// Web2RVR WebRTC Logic (Zero-Setup PeerJS Default + Optional Custom Firebase)
+// Multi-Signaling WebRTC Engine with PeerJS Retry & Dual-Tab Camera Fallback
+
+const FIREBASE_DB_URL = 'https://web2rvrwebrtc-default-rtdb.firebaseio.com';
 
 const ICE_SERVERS = {
   iceServers: [
@@ -52,6 +54,19 @@ document.addEventListener('DOMContentLoaded', () => {
   let isAudioMuted = false;
   let isVideoOff = false;
   let facingMode = 'user';
+  let callRetryInterval = null;
+
+  // Initialize Firebase Realtime DB if SDK present
+  try {
+    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+      firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
+    }
+    if (typeof firebase !== 'undefined') {
+      firebaseDb = firebase.database();
+    }
+  } catch (e) {
+    console.warn("Firebase Init fallback:", e);
+  }
 
   // 1. Expiry Time Calculation (12:00 AM IST)
   function updateExpiryDisplay() {
@@ -141,15 +156,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const customDbUrl = customFirebaseInput ? customFirebaseInput.value.trim() : '';
 
     if (customDbUrl && customDbUrl.startsWith('https://')) {
-      // Use Custom Firebase Database if provided
       await initFirebaseWebRTC(role, customDbUrl);
     } else {
-      // DEFAULT: Zero-Setup PeerJS Signaling (Works Out of the Box!)
       await initPeerJS(role);
     }
   }
 
-  // --- ZERO-SETUP PEERJS ENGINE (Default) ---
+  // --- ZERO-SETUP PEERJS ENGINE (With Retry & Dual Tab Support) ---
   async function initPeerJS(role) {
     await acquireLocalCamera();
 
@@ -165,43 +178,76 @@ document.addEventListener('DOMContentLoaded', () => {
       peerInstance = new Peer(hostPeerId, { config: ICE_SERVERS });
 
       peerInstance.on('open', (id) => {
-        console.log("Doctor Host Peer Created:", id);
+        console.log("✅ Doctor Host Peer Created & Registered:", id);
       });
 
       peerInstance.on('call', (call) => {
-        console.log("Incoming call from Patient/VR!");
+        console.log("📞 Incoming Call Received from Patient!");
         call.answer(localStream);
-        call.on('stream', (remoteStream) => {
+
+        const handleRemoteStream = (remoteStream) => {
+          console.log("🎥 Doctor Received Patient Remote Video Stream!");
           if (remoteVideo) remoteVideo.srcObject = remoteStream;
           if (connectingOverlay) connectingOverlay.style.display = 'none';
-        });
-      });
+        };
 
-      peerInstance.on('error', (err) => {
-        if (err.type === 'unavailable-id') {
-          // Room ID already taken, recreate
-          console.warn("Room ID already active.");
+        call.on('stream', handleRemoteStream);
+
+        // Fallback for MediaStreamTrack event
+        if (call.peerConnection) {
+          call.peerConnection.ontrack = (evt) => {
+            if (evt.streams && evt.streams[0]) handleRemoteStream(evt.streams[0]);
+          };
         }
       });
+
     } else {
       // Patient / VR joins the doctor host peer
-      const joinerId = `web2rvr-${currentRoomId}-guest-${Math.floor(Math.random() * 1000)}`;
+      const joinerId = `web2rvr-${currentRoomId}-guest-${Math.floor(Math.random() * 10000)}`;
       peerInstance = new Peer(joinerId, { config: ICE_SERVERS });
 
       peerInstance.on('open', () => {
-        console.log("Patient Joiner Peer Created. Calling Doctor Host:", hostPeerId);
-        const call = peerInstance.call(hostPeerId, localStream);
+        console.log("✅ Patient Peer Ready:", joinerId, "Calling Doctor Host:", hostPeerId);
+        
+        let isConnected = false;
 
-        call.on('stream', (remoteStream) => {
-          console.log("Connected to Doctor Stream!");
-          if (remoteVideo) remoteVideo.srcObject = remoteStream;
-          if (connectingOverlay) connectingOverlay.style.display = 'none';
-        });
+        const attemptCall = () => {
+          if (isConnected) return;
+          console.log("Dialing Doctor Host:", hostPeerId);
+          const call = peerInstance.call(hostPeerId, localStream);
+
+          if (!call) return;
+
+          const handleRemoteStream = (remoteStream) => {
+            if (isConnected) return;
+            isConnected = true;
+            console.log("🎥 Patient Connected to Doctor Remote Stream!");
+            if (remoteVideo) remoteVideo.srcObject = remoteStream;
+            if (connectingOverlay) connectingOverlay.style.display = 'none';
+            if (callRetryInterval) clearInterval(callRetryInterval);
+          };
+
+          call.on('stream', handleRemoteStream);
+
+          if (call.peerConnection) {
+            call.peerConnection.ontrack = (evt) => {
+              if (evt.streams && evt.streams[0]) handleRemoteStream(evt.streams[0]);
+            };
+          }
+        };
+
+        // Immediate call attempt
+        attemptCall();
+
+        // Retry every 2 seconds until Doctor host answers
+        callRetryInterval = setInterval(() => {
+          if (!isConnected) attemptCall();
+        }, 2500);
       });
     }
   }
 
-  // --- OPTIONAL CUSTOM FIREBASE ENGINE ---
+  // --- FIREBASE ENGINE ---
   async function initFirebaseWebRTC(role, dbUrl) {
     try {
       if (typeof firebase !== 'undefined' && !firebase.apps.length) {
@@ -283,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Acquire Camera with Canvas Stream Fallback for 2-Tab Testing on Same Laptop
   async function acquireLocalCamera() {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
@@ -290,12 +337,37 @@ document.addEventListener('DOMContentLoaded', () => {
         audio: true
       });
       if (localVideo) localVideo.srcObject = localStream;
-      if (pc) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      }
     } catch (err) {
-      console.error("Camera error:", err);
+      console.warn("Physical camera busy or unavailable. Generating Fallback Stream for 2-Tab Testing...", err);
+      // Generate Fallback Canvas Stream so 2 tabs on the same laptop can test WebRTC!
+      localStream = createFallbackCanvasStream();
+      if (localVideo) localVideo.srcObject = localStream;
     }
+
+    if (pc && localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+  }
+
+  // Synthetic Fallback Stream for Multi-Tab Testing
+  function createFallbackCanvasStream() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+    const ctx = canvas.getContext('2d');
+    
+    let hue = userRole === 'doctor' ? 180 : 120;
+    setInterval(() => {
+      ctx.fillStyle = `hsl(${hue}, 60%, 20%)`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(userRole === 'doctor' ? 'Doctor Webcam Stream' : 'Patient/VR Stream', canvas.width / 2, canvas.height / 2);
+    }, 100);
+
+    const stream = canvas.captureStream(30);
+    return stream;
   }
 
   // 6. Copy Room Key
@@ -338,6 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnEndSession) {
     btnEndSession.addEventListener('click', () => {
+      if (callRetryInterval) clearInterval(callRetryInterval);
       if (pc) pc.close();
       if (peerInstance) peerInstance.destroy();
       if (localStream) localStream.getTracks().forEach(t => t.stop());
