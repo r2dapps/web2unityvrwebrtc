@@ -3,9 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Doctor VR WebRTC Consultation Portal (Web2RVR)</title>
+  <title>Doctor VR WebRTC Consultation Portal | Web2RVR</title>
+  
+  <!-- SEO & Social Meta Tags -->
+  <meta name="description" content="Real-time WebRTC live HD video & audio streaming gateway for Doctor Telemedicine, Meta Quest 3 VR, and Unity Engine.">
+  <meta name="keywords" content="WebRTC, Telemedicine, VR, Meta Quest 3, Unity, Firebase, P2P Video Call">
+  <meta name="theme-color" content="#0b0f19">
+
+  <!-- Open Graph / Facebook / WhatsApp -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://r2dapps.github.io/web2rvrwebrtc/">
+  <meta property="og:title" content="Doctor VR WebRTC Consultation Portal">
+  <meta property="og:description" content="Connect Doctor Mobile Web and Meta Quest 3 VR in real-time with P2P HD Video Streaming.">
+  <meta property="og:image" content="favicon.svg">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Doctor VR WebRTC Consultation Portal">
+  <meta name="twitter:description" content="Real-time WebRTC video gateway between web browsers and Meta Quest 3 VR.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="alternate icon" href="favicon.svg">
+
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
   <!-- Firebase App & Database SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
@@ -18,7 +41,7 @@
   <div id="startScreen" class="screen-container">
     <div class="card start-card">
       <div class="brand-logo">
-        <i class="fa-solid fa-user-md"></i>
+        <i class="fa-solid fa-vr-cardboard"></i>
       </div>
       <h2>Doctor VR Consultation</h2>
       <p class="subtitle">Multi-Signaling WebRTC Gateway for Meta Quest 3 & Web Devices</p>
@@ -27,8 +50,8 @@
       <div class="form-group">
         <label><i class="fa-solid fa-satellite-dish"></i> Signaling Engine</label>
         <select id="signalingModeSelect" class="select-input">
-          <option value="firebase">Firebase Realtime DB (Recommended - Works Across Networks)</option>
-          <option value="peerjs">PeerJS Server (Zero Account / Cloud)</option>
+          <option value="peerjs">PeerJS Engine (Recommended - 0 Account / Cloud Setup)</option>
+          <option value="firebase">Firebase Realtime DB (Custom Database)</option>
         </select>
       </div>
 
@@ -45,16 +68,17 @@
 
       <!-- Live QR Code Card for Easy Instant Sharing -->
       <div class="qr-container">
-        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Scan to Join Room on 2nd Device / VR</div>
+        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Scan to Join Room Automatically</div>
         <div class="qr-image-wrapper">
           <img id="qrCodeImg" src="" alt="Room QR Code">
         </div>
-        <div style="font-size: 0.7rem; color: #06b6d4;" id="qrLinkText">https://r2dapps.github.io/web2rvrwebrtc/?room=DOC-8921</div>
+        <div style="font-size: 0.7rem; color: #06b6d4; word-break: break-all;" id="qrLinkText">https://r2dapps.github.io/web2rvrwebrtc/?room=DOC-8921</div>
       </div>
 
-      <div class="form-group" id="firebaseConfigBox">
+      <!-- Firebase DB URL Input (Hidden by default unless Firebase selected) -->
+      <div class="form-group" id="firebaseConfigBox" style="display: none;">
         <label for="firebaseUrlInput"><i class="fa-solid fa-database"></i> Firebase DB URL</label>
-        <input type="text" id="firebaseUrlInput" value="https://aethertalk-default-rtdb.firebaseio.com" placeholder="https://your-app.firebaseio.com">
+        <input type="text" id="firebaseUrlInput" value="" placeholder="https://YOUR-PROJECT-rtdb.firebaseio.com">
       </div>
 
       <button id="btnJoinRoom" class="btn btn-primary btn-block">
@@ -73,8 +97,8 @@
       <!-- Placeholder when 2nd device/VR is not yet connected -->
       <div id="vrConnectingOverlay" class="vr-overlay font-sans">
         <div class="spinner"></div>
-        <h3>Waiting for Peer Connection...</h3>
-        <p>Open this link or scan QR code on 2nd device / VR with Key: <strong id="displayRoomKey">DOC-8921</strong></p>
+        <h3>Connecting Session...</h3>
+        <p>Connecting to Room: <strong id="displayRoomKey">DOC-8921</strong></p>
       </div>
 
       <!-- Top Overlay Bar -->
@@ -84,7 +108,7 @@
           <span id="activeRoomTag">DOC-8921</span>
         </div>
 
-        <button id="btnCopyLink" class="pill-btn"><i class="fa-solid fa-copy"></i> Copy Link</button>
+        <button id="btnCopyLink" class="pill-btn"><i class="fa-solid fa-share-nodes"></i> Share Link</button>
       </div>
 
       <!-- Floating Picture-in-Picture: Doctor Local Camera Stream -->

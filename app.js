@@ -1,4 +1,4 @@
-// Multi-Signaling WebRTC Logic for Doctor VR App (Firebase / PeerJS / Dual Web Device / QR Code)
+// Multi-Signaling WebRTC Logic for Doctor VR App (Firebase / PeerJS / Dual Web Device / Auto-Join QR Code)
 
 const ICE_SERVERS = {
   iceServers: [
@@ -44,11 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let isVideoOff = false;
   let facingMode = 'user';
 
-  // Parse URL Parameters to check if joining from QR Code scan
+  // Parse URL Parameters to check if opening via scanned QR Code or shared link
   const urlParams = new URLSearchParams(window.location.search);
   const roomFromUrl = urlParams.get('room') || urlParams.get('join');
+  let isAutoJoin = false;
+
   if (roomFromUrl && roomInput) {
     roomInput.value = roomFromUrl.toUpperCase();
+    isAutoJoin = true;
   }
 
   // Generate & Render QR Code for Room URL
@@ -62,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     qrLinkText.textContent = shareableUrl;
 
-    // Use free QR Server API to render QR Code SVG/PNG image
+    // Free QR Server API
     const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareableUrl)}`;
     qrCodeImg.src = qrApiUrl;
   }
@@ -108,42 +111,66 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 3. Copy Room Shareable Link
+  // 3. Share / Copy Room Shareable Link
   if (btnCopyLink) {
-    btnCopyLink.addEventListener('click', () => {
+    btnCopyLink.addEventListener('click', async () => {
       const baseUrl = window.location.origin + window.location.pathname;
       const shareableUrl = `${baseUrl}?room=${currentRoomId}`;
-      navigator.clipboard.writeText(shareableUrl);
-      btnCopyLink.innerHTML = '<i class="fa-solid fa-check"></i> Link Copied!';
-      setTimeout(() => btnCopyLink.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Link', 2000);
-    });
-  }
 
-  // 4. Start Doctor Session
-  if (btnJoinRoom) {
-    btnJoinRoom.addEventListener('click', async () => {
-      currentRoomId = (roomInput ? roomInput.value.trim().toUpperCase() : '') || 'DOC-8921';
-      const mode = signalingModeSelect ? signalingModeSelect.value : 'firebase';
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Join VR Consultation',
+            text: `Join VR Consultation Session with Room Key: ${currentRoomId}`,
+            url: shareableUrl
+          });
+          return;
+        } catch (e) {
+          // Fallback to clipboard
+        }
+      }
 
-      if (displayRoomKey) displayRoomKey.textContent = currentRoomId;
-      if (activeRoomTag) activeRoomTag.textContent = currentRoomId;
-
-      if (startScreen) startScreen.style.display = 'none';
-      if (callScreen) callScreen.style.display = 'flex';
-
-      if (mode === 'peerjs') {
-        await initPeerJS();
-      } else {
-        await initFirebaseWebRTC();
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shareableUrl);
+        btnCopyLink.innerHTML = '<i class="fa-solid fa-check"></i> Link Copied!';
+        setTimeout(() => btnCopyLink.innerHTML = '<i class="fa-solid fa-share-nodes"></i> Share Link', 2000);
       }
     });
   }
 
-  // --- MODE A: FIREBASE SIGNALLING (Works for Web-to-VR AND Web-to-Web on 2 Devices) ---
+  // 4. Start Doctor Session
+  async function startSession() {
+    currentRoomId = (roomInput ? roomInput.value.trim().toUpperCase() : '') || 'DOC-8921';
+    const mode = signalingModeSelect ? signalingModeSelect.value : 'peerjs';
+
+    if (displayRoomKey) displayRoomKey.textContent = currentRoomId;
+    if (activeRoomTag) activeRoomTag.textContent = currentRoomId;
+
+    if (startScreen) startScreen.style.display = 'none';
+    if (callScreen) callScreen.style.display = 'flex';
+
+    if (mode === 'firebase') {
+      await initFirebaseWebRTC();
+    } else {
+      await initPeerJS();
+    }
+  }
+
+  if (btnJoinRoom) {
+    btnJoinRoom.addEventListener('click', startSession);
+  }
+
+  // AUTO-JOIN IF SCANNED FROM QR CODE OR OPENED VIA SHARED LINK
+  if (isAutoJoin) {
+    console.log("🔗 Auto-joining room from QR code / link:", roomFromUrl);
+    setTimeout(startSession, 300);
+  }
+
+  // --- MODE A: FIREBASE SIGNALLING ---
   async function initFirebaseWebRTC() {
     const firebaseUrl = firebaseUrlInput ? firebaseUrlInput.value.trim() : '';
-    if (!firebaseUrl) {
-      alert('Please enter a Firebase Database URL!');
+    if (!firebaseUrl || !firebaseUrl.startsWith('https://')) {
+      alert('Please enter a valid Firebase Database URL (starting with https://)!');
       return;
     }
 
@@ -183,17 +210,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    // Check if an offer already exists (if joining as 2nd web device)
     const existingOfferSnap = await doctorOffersRef.once('value');
     const existingOffer = existingOfferSnap.val();
 
     if (!existingOffer) {
-      // Creator (Doctor / Device 1)
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await doctorOffersRef.set({ sdp: offer.sdp, type: offer.type, timestamp: Date.now() });
 
-      // Listen for Answer
       vrAnswersRef.on('value', async (snapshot) => {
         const data = snapshot.val();
         if (data && data.sdp && !pc.currentRemoteDescription) {
@@ -202,42 +226,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      // Listen for ICE Candidates
       vrCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
         if (candidateData) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-          } catch (e) { console.error("ICE error:", e); }
+          try { await pc.addIceCandidate(new RTCIceCandidate(candidateData)); } catch (e) {}
         }
       });
     } else {
-      // Participant (Patient / Device 2)
       await pc.setRemoteDescription(new RTCSessionDescription(existingOffer));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await vrAnswersRef.set({ sdp: answer.sdp, type: answer.type, timestamp: Date.now() });
 
-      // Send Candidates under vr_candidates
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           vrCandidatesRef.push(event.candidate.toJSON());
         }
       };
 
-      // Listen for Doctor candidates
       doctorCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
         if (candidateData) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-          } catch (e) { console.error("ICE error:", e); }
+          try { await pc.addIceCandidate(new RTCIceCandidate(candidateData)); } catch (e) {}
         }
       });
     }
   }
 
-  // --- MODE B: PEERJS SIGNALLING ---
+  // --- MODE B: PEERJS SIGNALLING (Default zero-cloud option) ---
   async function initPeerJS() {
     await acquireLocalCamera();
 
@@ -246,11 +262,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Try joining existing peer or creating host
     peerInstance = new Peer(`${currentRoomId}-doctor`, { config: ICE_SERVERS });
 
     peerInstance.on('open', (id) => {
-      console.log("PeerJS Ready ID:", id);
+      console.log("PeerJS Doctor Ready ID:", id);
     });
 
     peerInstance.on('call', (call) => {
@@ -262,7 +277,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     peerInstance.on('error', (err) => {
-      // If peer ID taken, call as patient
       if (err.type === 'unavailable-id') {
         const peer2 = new Peer({ config: ICE_SERVERS });
         peer2.on('open', () => {
@@ -288,7 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       console.error("Camera error:", err);
-      alert("Camera access failed: " + err.message);
     }
   }
 
@@ -326,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pc) pc.close();
       if (peerInstance) peerInstance.destroy();
       if (localStream) localStream.getTracks().forEach(t => t.stop());
-      location.reload();
+      window.location.href = window.location.pathname; // Clear room query param
     });
   }
 });
