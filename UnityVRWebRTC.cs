@@ -137,6 +137,55 @@ public class UnityVRWebRTC : MonoBehaviour
         };
         yield return StartCoroutine(PutFirebaseData($"web2rvr_rooms/{sRoom}/answer.json", JsonUtility.ToJson(answerPayload)));
         Debug.Log("[Unity VR] WebRTC SDP Answer published to Firebase successfully!");
+
+        // 8. Poll Doctor's ICE Candidates and feed to PeerConnection
+        StartCoroutine(PollDoctorCandidates(sRoom));
+    }
+
+    private IEnumerator PollDoctorCandidates(string sRoom)
+    {
+        string candidatesUrl = $"{firebaseDatabaseUrl}/web2rvr_rooms/{sRoom}/doctor_candidates.json";
+        System.Collections.Generic.HashSet<string> processedCandidates = new System.Collections.Generic.HashSet<string>();
+
+        while (peerConnection != null)
+        {
+            using (UnityWebRequest www = UnityWebRequest.Get(candidatesUrl))
+            {
+                yield return www.SendWebRequest();
+                if (www.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(www.downloadHandler.text) && www.downloadHandler.text != "null")
+                {
+                    string jsonText = www.downloadHandler.text;
+                    int index = 0;
+                    while ((index = jsonText.IndexOf("\"candidate\":", index)) != -1)
+                    {
+                        int end = jsonText.IndexOf("}", index);
+                        if (end != -1)
+                        {
+                            string snippet = jsonText.Substring(index - 1, end - index + 2);
+                            try
+                            {
+                                IceCandidatePayload candObj = JsonUtility.FromJson<IceCandidatePayload>(snippet);
+                                if (candObj != null && !string.IsNullOrEmpty(candObj.candidate) && !processedCandidates.Contains(candObj.candidate))
+                                {
+                                    processedCandidates.Add(candObj.candidate);
+                                    RTCIceCandidateInit init = new RTCIceCandidateInit
+                                    {
+                                        candidate = candObj.candidate,
+                                        sdpMid = candObj.sdpMid,
+                                        sdpMLineIndex = candObj.sdpMLineIndex
+                                    };
+                                    peerConnection.AddIceCandidate(new RTCIceCandidate(init));
+                                    Debug.Log("[Unity VR] SUCCESS! Doctor ICE Candidate added to PeerConnection!");
+                                }
+                            }
+                            catch (Exception) {}
+                        }
+                        index += 12;
+                    }
+                }
+            }
+            yield return new WaitForSeconds(1.0f);
+        }
     }
 
     private void OnTrackReceived(RTCTrackEvent evt)

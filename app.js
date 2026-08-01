@@ -194,11 +194,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     pc.ontrack = (event) => {
-      console.log("🎉 SUCCESS! Native WebRTC Remote Video Track Received!", event.streams);
-      if (event.streams && event.streams[0] && remoteVideo) {
-        remoteVideo.srcObject = event.streams[0];
-        if (connectingOverlay) connectingOverlay.style.display = 'none';
+      console.log("🎉 SUCCESS! Native WebRTC Remote Track Received!", event.track.kind, event.streams);
+      const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+      if (remoteVideo) {
+        remoteVideo.srcObject = stream;
+        remoteVideo.play().catch((e) => {
+          console.warn("Autoplay blocked, attempting muted autoplay fallback:", e);
+          remoteVideo.muted = true;
+          remoteVideo.play().catch(() => {});
+        });
       }
+      if (connectingOverlay) connectingOverlay.style.display = 'none';
     };
 
     if (!firebaseDb) {
