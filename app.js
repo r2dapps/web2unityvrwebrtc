@@ -239,13 +239,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const doctorCandidatesRef = activeRoomRef.child('doctor_candidates');
     const patientCandidatesRef = activeRoomRef.child('patient_candidates');
 
-    if (role === 'doctor') {
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          doctorCandidatesRef.push(event.candidate.toJSON());
-        }
-      };
+    // Immediate ICE Candidate handling & candidate queue
+    const remoteCandidateQueue = [];
 
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        const targetRef = role === 'doctor' ? doctorCandidatesRef : patientCandidatesRef;
+        targetRef.push(event.candidate.toJSON());
+      }
+    };
+
+    async function handleIncomingCandidate(candidateData) {
+      if (!candidateData) return;
+      if (pc.remoteDescription && pc.remoteDescription.type) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+        } catch (e) { console.warn("Candidate add warning:", e); }
+      } else {
+        remoteCandidateQueue.push(candidateData);
+      }
+    }
+
+    async function flushRemoteCandidates() {
+      while (remoteCandidateQueue.length > 0) {
+        const cand = remoteCandidateQueue.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (e) {}
+      }
+    }
+
+    if (role === 'doctor') {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
@@ -259,25 +283,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = snapshot.val();
         if (data && data.sdp && !pc.currentRemoteDescription) {
           await pc.setRemoteDescription(new RTCSessionDescription(data));
+          await flushRemoteCandidates();
         }
       });
 
       patientCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
-        if (candidateData) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-          } catch (e) { console.error("ICE Candidate Error:", e); }
-        }
+        await handleIncomingCandidate(candidateData);
       });
 
     } else {
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          patientCandidatesRef.push(event.candidate.toJSON());
-        }
-      };
-
       const offerSnap = await offerRef.once('value');
       const offerData = offerSnap.val();
 
@@ -288,6 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+      await flushRemoteCandidates();
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -299,11 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       doctorCandidatesRef.on('child_added', async (snapshot) => {
         const candidateData = snapshot.val();
-        if (candidateData) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-          } catch (e) { console.error("ICE Candidate Error:", e); }
-        }
+        await handleIncomingCandidate(candidateData);
       });
     }
   }
