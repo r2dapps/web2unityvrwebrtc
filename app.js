@@ -6,8 +6,19 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' }
-  ]
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelay',
+      credential: 'openrelay'
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -163,6 +174,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     pc = new RTCPeerConnection(ICE_SERVERS);
+    
+    pc.oniceconnectionstatechange = () => {
+      console.log("🌐 ICE Connection State:", pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        if (connectingOverlay) connectingOverlay.style.display = 'none';
+      } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        console.warn("⚠️ ICE Connection disconnected or failed. Attempting ICE restart...");
+        if (pc.restartIce) {
+          pc.restartIce();
+        }
+      }
+    };
+
     await acquireLocalCamera();
 
     if (localStream) {

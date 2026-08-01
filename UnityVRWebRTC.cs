@@ -58,7 +58,13 @@ public class UnityVRWebRTC : MonoBehaviour
             {
                 new RTCIceServer { urls = new[] { "stun:stun.l.google.com:19302" } },
                 new RTCIceServer { urls = new[] { "stun:stun1.l.google.com:19302" } },
-                new RTCIceServer { urls = new[] { "stun:stun.cloudflare.com:3478" } }
+                new RTCIceServer { urls = new[] { "stun:stun.cloudflare.com:3478" } },
+                new RTCIceServer 
+                { 
+                    urls = new[] { "turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp" },
+                    username = "openrelay",
+                    credential = "openrelay"
+                }
             }
         };
 
