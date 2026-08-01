@@ -193,6 +193,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     await acquireLocalCamera();
 
+    // 1. PeerJS Web-to-Web Cross-Network Engine (Identical to WalkieTalkie)
+    if (typeof Peer !== 'undefined') {
+      try {
+        const pId = role === 'doctor' ? currentRoomId : `patient_${Math.floor(1000 + Math.random() * 9000)}`;
+        const peerJsInstance = new Peer(pId, { config: ICE_SERVERS, debug: 1 });
+        
+        peerJsInstance.on('open', (id) => {
+          console.log("🚀 PeerJS Web Engine Ready [ID:", id, "]");
+          if (role === 'patient') {
+            const call = peerJsInstance.call(currentRoomId, localStream);
+            if (call) {
+              call.on('stream', (remoteStream) => {
+                console.log("🎉 PeerJS Remote Stream Received!");
+                if (remoteVideo) {
+                  remoteVideo.srcObject = remoteStream;
+                  remoteVideo.play().catch(() => {});
+                }
+                if (connectingOverlay) connectingOverlay.style.display = 'none';
+              });
+            }
+          }
+        });
+
+        peerJsInstance.on('call', (call) => {
+          console.log("📞 Incoming PeerJS Call!");
+          call.answer(localStream);
+          call.on('stream', (remoteStream) => {
+            console.log("🎉 PeerJS Remote Stream Received!");
+            if (remoteVideo) {
+              remoteVideo.srcObject = remoteStream;
+              remoteVideo.play().catch(() => {});
+            }
+            if (connectingOverlay) connectingOverlay.style.display = 'none';
+          });
+        });
+      } catch (e) {
+        console.warn("PeerJS Init Warning:", e);
+      }
+    }
+
+    // 2. Firebase Native WebRTC Engine (For Unity VR & standard WebRTC)
     if (localStream) {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
