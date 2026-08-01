@@ -193,15 +193,29 @@ document.addEventListener('DOMContentLoaded', () => {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
+    let remoteStream = new MediaStream();
+
     pc.ontrack = (event) => {
-      console.log("🎉 SUCCESS! Native WebRTC Remote Track Received!", event.track.kind, event.streams);
-      const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
-      if (remoteVideo) {
-        remoteVideo.srcObject = stream;
+      console.log("🎉 SUCCESS! Native WebRTC Remote Track Received!", event.track.kind);
+      if (event.streams && event.streams[0]) {
+        event.streams[0].getTracks().forEach((t) => {
+          if (!remoteStream.getTracks().some((existing) => existing.id === t.id)) {
+            remoteStream.addTrack(t);
+          }
+        });
+      } else if (event.track) {
+        if (!remoteStream.getTracks().some((existing) => existing.id === event.track.id)) {
+          remoteStream.addTrack(event.track);
+        }
+      }
+
+      if (remoteVideo && remoteVideo.srcObject !== remoteStream) {
+        remoteVideo.srcObject = remoteStream;
+      }
+
+      if (remoteVideo && remoteVideo.paused) {
         remoteVideo.play().catch((e) => {
-          console.warn("Autoplay blocked, attempting muted autoplay fallback:", e);
-          remoteVideo.muted = true;
-          remoteVideo.play().catch(() => {});
+          console.warn("Autoplay blocked, attempting user touch fallback:", e);
         });
       }
       if (connectingOverlay) connectingOverlay.style.display = 'none';
