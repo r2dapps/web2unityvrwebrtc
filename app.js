@@ -89,7 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (shareRoomKeyTag) shareRoomKeyTag.textContent = key;
   }
 
-  const btnNewKey = document.getElementById('btnNewKey');
   if (btnNewKey) btnNewKey.addEventListener('click', generateNewRoomKey);
 
   const btnCopyLobbyKey = document.getElementById('btnCopyLobbyKey');
