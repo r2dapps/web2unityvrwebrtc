@@ -1,0 +1,60 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <Style src="AetherCareStyle.uss" />
+    <!-- VR World Space Root: Enforced 1080p resolution and globally upscaled base font -->
+    <ui:VisualElement class="dashboard-container" style="width: 1920px; height: 1080px; font-size: 36px;">
+        
+        <!-- Main Call Screen (Background) -->
+        <ui:VisualElement class="main-call-screen" name="main-call-screen">
+            <!-- Fullscreen Video -->
+            <ui:VisualElement class="video-container" name="video-container">
+                <ui:Label text="Remote Video Feed" class="placeholder-text" name="video-placeholder" style="font-size: 64px;" />
+                <ui:VisualElement name="local-video-pip" class="local-pip" style="width: 480px; height: 270px; border-width: 6px; bottom: 150px; right: 40px;" />
+            </ui:VisualElement>
+
+            <!-- Collapsible Chat Sidebar (Right) -->
+            <ui:VisualElement class="chat-panel hidden" name="chat-panel" style="width: 600px; border-left-width: 4px;">
+                <ui:Label text="Chat" class="chat-header" style="font-size: 48px; padding: 30px;" />
+                <ui:ScrollView class="chat-scrollview" name="chat-scrollview" />
+                <ui:VisualElement class="chat-input-row" style="padding: 30px;">
+                    <ui:TextField name="chat-input" placeholder-text="Type a message..." class="chat-input-field" style="height: 80px; font-size: 32px;" />
+                    <ui:Button text="Send" name="send-chat-btn" class="chat-send-btn" style="height: 80px; font-size: 32px; width: 150px;" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Floating Bottom Toolbar (Upscaled for VR Pointers) -->
+            <ui:VisualElement class="bottom-toolbar" style="bottom: 40px; padding: 20px; border-radius: 60px;">
+                <ui:VisualElement class="toolbar-group">
+                    <ui:Button text="🎤" name="mute-mic-btn" class="toolbar-btn icon-btn" style="width: 90px; height: 90px; font-size: 48px;" />
+                    <ui:DropdownField name="camera-dropdown" class="toolbar-dropdown" style="height: 90px; width: 400px; font-size: 32px;" />
+                </ui:VisualElement>
+                
+                <ui:VisualElement class="toolbar-group center-group">
+                    <ui:Button text="📞" name="leave-btn" class="danger-btn icon-btn" style="width: 90px; height: 90px; font-size: 48px;" />
+                </ui:VisualElement>
+                
+                <ui:VisualElement class="toolbar-group right-group">
+                    <ui:Button text="💬" name="toggle-chat-btn" class="toolbar-btn icon-btn" style="width: 90px; height: 90px; font-size: 48px;" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Lobby Overlay -->
+        <ui:VisualElement class="lobby-overlay" name="lobby-overlay">
+            <ui:VisualElement class="lobby-card" style="width: 1000px; padding: 80px; border-radius: 40px;">
+                <ui:Label text="AetherCare Web2RVR" class="lobby-title" style="font-size: 72px; margin-bottom: 30px;" />
+                <ui:Label text="Connect to a secure telemedicine room." class="lobby-subtitle" style="font-size: 36px; margin-bottom: 60px;" />
+                
+                <ui:VisualElement class="lobby-inputs">
+                    <ui:TextField label="Your Name" name="display-name" placeholder-text="e.g. Dr. Smith" class="lobby-input" style="height: 90px; font-size: 36px; margin-bottom: 40px;" />
+                    <ui:TextField label="Room Code" name="room-key" text="ROOM-8921" class="lobby-input" style="height: 90px; font-size: 36px; margin-bottom: 60px;" />
+                </ui:VisualElement>
+                
+                <ui:VisualElement class="lobby-buttons">
+                    <ui:Button text="Join Meeting" name="join-btn" class="primary-button lobby-action-btn" style="height: 100px; font-size: 40px; border-radius: 50px;" />
+                    <ui:Button text="Host Meeting" name="host-btn" class="secondary-button lobby-action-btn" style="height: 100px; font-size: 40px; border-radius: 50px;" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>
