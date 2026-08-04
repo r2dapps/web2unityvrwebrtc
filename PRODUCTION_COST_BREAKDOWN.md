@@ -52,16 +52,11 @@ TURN is the **Fallback Video Relay Server**. It is ONLY used when a strict firew
 
 ### Usage Math (PoC vs. Production)
 
-**Scenario 1: Doctor on Wi-Fi + Patient on Wi-Fi (The Ideal Path)**
-*   **Usage:** 8-10 hours daily.
-*   **Data Routing:** 100% Peer-to-Peer. No TURN server required.
-*   **Cost:** **$0.00 / month**.
-
-**Scenario 2: Doctor on Mobile Data (4G/5G) + Patient on Strict Hospital Wi-Fi (The Worst-Case)**
-*   **Usage:** 8-10 hours daily (~250 hours / month).
-*   **Data Routing:** P2P is blocked. 100% traffic flows through TURN relay.
-*   **Data Calculation:** 250 hours * 500 MB = **125 GB / month**.
-*   **Cost (PoC Phase):** Metered gives 50 GB free. You pay for 75 GB * $0.40 = **$30.00 / month per active doctor**.
+| Scenario | Usage Profile | Data Routing | Monthly Data Usage | Estimated Cost |
+| :--- | :--- | :--- | :--- | :--- |
+| **PoC / Ideal Prod** (Both on Wi-Fi) | 8-10 hours daily | 100% Peer-to-Peer | 0 GB (No TURN required) | **$0.00 / month** |
+| **Worst-Case Prod** (Doctor Mobile, Patient strict Firewall) | 8-10 hours daily (~250 hrs/mo) | 100% TURN Relay | 125 GB (250 hrs * 500 MB) | **$30.00 / month** (First 50GB Free, 75GB * $0.40) |
+| **Self-Hosted** (Custom Coturn PC) | Unlimited | 100% TURN Relay | Unlimited | **$0.00 / month** (Only pay for PC internet bill) |
 
 ---
 
