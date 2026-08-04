@@ -6,6 +6,8 @@ public class AetherCareUIController : MonoBehaviour
 {
     [Header("Dependencies")]
     public UnityVRWebRTC webrtcManager;
+    [Tooltip("List of specific cameras to populate in the UI dropdown. Prevents grabbing UI cameras.")]
+    public Camera[] availableCameras;
 
     [Header("Optional uGUI Fallbacks (Standard Unity UI)")]
     public UnityEngine.UI.Button uguiConnectBtn;
@@ -37,9 +39,6 @@ public class AetherCareUIController : MonoBehaviour
 
     private RenderTexture _remoteRenderTexture;
     private Texture _latestRemoteTexture;
-    
-    private Camera[] _availableCameras;
-
     private void OnEnable()
     {
         // 1. Wire up uGUI fallbacks
@@ -47,8 +46,6 @@ public class AetherCareUIController : MonoBehaviour
         if (uguiLeaveBtn != null) uguiLeaveBtn.onClick.AddListener(OnLeaveClicked);
         if (uguiMuteToggle != null && webrtcManager != null) uguiMuteToggle.onValueChanged.AddListener(v => webrtcManager.SetMicrophoneMuted(v));
         if (uguiVolumeSlider != null && webrtcManager != null) uguiVolumeSlider.onValueChanged.AddListener(v => webrtcManager.SetRemoteVolume(v));
-
-        _availableCameras = Camera.allCameras;
 
         // 2. Wire up UI Toolkit
         _uiDocument = GetComponent<UIDocument>();
@@ -75,18 +72,20 @@ public class AetherCareUIController : MonoBehaviour
             _sendChatBtn = root.Q<Button>("send-chat-btn");
 
             // Populate Camera Dropdown
-            if (_cameraDropdown != null)
+            if (_cameraDropdown != null && availableCameras != null)
             {
                 var camNames = new List<string>();
-                foreach (var cam in _availableCameras) camNames.Add(cam.name);
+                foreach (var cam in availableCameras) {
+                    if (cam != null) camNames.Add(cam.name);
+                }
                 _cameraDropdown.choices = camNames;
                 if (camNames.Count > 0) _cameraDropdown.index = 0;
                 
                 _cameraDropdown.RegisterValueChangedCallback(evt => {
                     int idx = _cameraDropdown.choices.IndexOf(evt.newValue);
-                    if (idx >= 0 && idx < _availableCameras.Length && webrtcManager != null)
+                    if (idx >= 0 && idx < availableCameras.Length && webrtcManager != null)
                     {
-                        webrtcManager.SwitchCamera(_availableCameras[idx]);
+                        webrtcManager.SwitchCamera(availableCameras[idx]);
                     }
                 });
             }
