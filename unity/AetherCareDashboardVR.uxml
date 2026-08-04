@@ -1,6 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <Style src="AetherCareStyle.uss" />
-    <!-- VR World Space Root: Enforced 1080p resolution and globally upscaled base font -->
+    <!-- VR World Space Root: Enforced 1080p resolution (16:9 Aspect Ratio). 
+         To change the physical aspect ratio of the panel (e.g., 4:3 or vertical 9:16), 
+         simply change the width/height pixel values below. The video will automatically letterbox to fit. -->
     <ui:VisualElement class="dashboard-container" style="width: 1920px; height: 1080px; font-size: 36px;">
         
         <!-- Main Call Screen (Background) -->
