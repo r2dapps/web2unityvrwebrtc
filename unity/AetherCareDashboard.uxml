@@ -40,7 +40,7 @@
         <!-- Lobby Overlay -->
         <ui:VisualElement class="lobby-overlay" name="lobby-overlay">
             <ui:VisualElement class="lobby-card">
-                <ui:Label text="AetherCare Telemedicine" class="lobby-title" />
+                <ui:Label text="AetherCare Web2RVR" class="lobby-title" />
                 <ui:Label text="Connect to a secure telemedicine room." class="lobby-subtitle" />
                 
                 <ui:VisualElement class="lobby-inputs">
