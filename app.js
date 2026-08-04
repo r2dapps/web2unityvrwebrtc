@@ -573,6 +573,13 @@ class MeshManager {
     }
   }
 
+  replaceAudioTrack(newTrack) {
+    for (const pc of this.pcs.values()) {
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
+      if (sender) sender.replaceTrack(newTrack);
+    }
+  }
+
   destroyAll() {
     clearInterval(this.statsTimer);
     for (const pc of this.pcs.values()) pc.close();
@@ -715,11 +722,7 @@ function createFallbackCanvasStream() {
     return canvas.captureStream(30);
 }
 
-// Update btnToggleMic / btnToggleCam to use localStreamRef instead of undefined localStream variable
-document.getElementById('btnToggleMic').addEventListener('click', (e) => {
-    // Override the old event listener by replacing the node or just ensuring it uses localStreamRef
-});
-// A safer way is to just let the old code run if it used localStream, but we will redefine the button clicks in the topPart by injecting a small script or we just rewrite the bottom section completely.
+
 
   // Copy Room Key
   if (btnCopyKey) {
@@ -759,7 +762,13 @@ document.getElementById('btnToggleMic').addEventListener('click', (e) => {
       // Inform MeshManager of track change
       if (meshManager && localStreamRef) {
           const videoTrack = localStreamRef.getVideoTracks()[0];
+          const audioTrack = localStreamRef.getAudioTracks()[0];
           if (videoTrack) meshManager.replaceVideoTrack(videoTrack);
+          if (audioTrack) meshManager.replaceAudioTrack(audioTrack);
+          
+          // Apply current mute state to the new track
+          if (audioTrack) audioTrack.enabled = !isAudioMuted;
+          if (videoTrack) videoTrack.enabled = !isVideoOff;
       }
     });
   }
