@@ -24,7 +24,7 @@
             <ui:VisualElement class="bottom-toolbar">
                 <ui:VisualElement class="toolbar-group">
                     <ui:Toggle label="Mute Mic" name="mute-mic" class="toolbar-toggle" />
-                    <ui:DropdownField label="Camera" name="camera-dropdown" class="toolbar-dropdown" />
+                    <ui:DropdownField name="camera-dropdown" class="toolbar-dropdown" />
                 </ui:VisualElement>
                 
                 <ui:VisualElement class="toolbar-group center-group">

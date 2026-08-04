@@ -46,17 +46,17 @@
 /* Floating Bottom Toolbar */
 .bottom-toolbar {
     position: absolute;
-    bottom: 20px;
+    bottom: 30px;
     left: 50%;
     translate: -50% 0; /* Center horizontally */
-    background-color: rgba(30, 30, 30, 0.85);
-    border-radius: 16px;
-    padding: 10px 20px;
+    background-color: rgba(15, 23, 42, 0.95); /* Slate 900 */
+    border-radius: 40px;
+    padding: 10px 15px;
     display: flex;
     flex-direction: row;
     align-items: center;
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.1);
+    border-width: 0;
+    box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.5);
 }
 
 .toolbar-group {
@@ -66,31 +66,45 @@
 }
 
 .center-group {
-    margin-left: 20px;
-    margin-right: 20px;
+    margin-left: 10px;
+    margin-right: 10px;
 }
 
-.toolbar-btn {
-    background-color: #333;
+.toolbar-btn, .toolbar-dropdown .unity-popup-field__input, .toolbar-toggle {
+    background-color: #334155; /* Slate 700 */
     color: white;
-    border-radius: 8px;
-    padding: 10px 15px;
+    border-radius: 20px;
+    padding: 10px 20px;
     margin-left: 5px;
     margin-right: 5px;
     -unity-font-style: bold;
     border-width: 0;
+    min-height: 40px;
 }
-.toolbar-btn:hover { background-color: #444; }
+.toolbar-btn:hover, .toolbar-dropdown .unity-popup-field__input:hover { background-color: #475569; }
+
+.toolbar-dropdown .unity-popup-field__input {
+    padding-left: 15px;
+    padding-right: 15px;
+    margin: 0;
+}
+
+.toolbar-toggle .unity-toggle__input {
+    margin-right: 8px;
+}
 
 .danger-btn {
-    background-color: #e74c3c;
+    background-color: #ef4444; /* Red 500 */
     color: white;
-    border-radius: 8px;
+    border-radius: 20px;
     padding: 10px 20px;
     -unity-font-style: bold;
     border-width: 0;
+    margin-left: 5px;
+    margin-right: 5px;
+    min-height: 40px;
 }
-.danger-btn:hover { background-color: #c0392b; }
+.danger-btn:hover { background-color: #dc2626; }
 
 /* Collapsible Chat */
 .chat-panel {

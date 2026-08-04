@@ -620,7 +620,7 @@ let signaling = null;
 let localStreamRef = null;
 
 async function initNativeWebRTC(role, dbUrl) {
-    console.log(`🔥 Initializing AetherCare Engine [Role: ${role}] using Firebase DB: `, dbUrl);
+    console.log(`🔥 Initializing AetherCare Engine [Role: ${role}]...`);
     
     // Resolve STUN/TURN servers via config (uses AETHERCARE_CONFIG.turnMode)
     const iceServers = await resolveIceServers();
@@ -766,7 +766,7 @@ document.getElementById('btnToggleMic').addEventListener('click', (e) => {
 
   if (btnEndSession) {
     btnEndSession.addEventListener('click', () => {
-      if (meshManager) meshManager.cleanup();
+      if (meshManager) meshManager.destroyAll();
       if (signaling) signaling.disconnect();
       if (localStreamRef) localStreamRef.getTracks().forEach(t => t.stop());
       window.location.href = window.location.pathname;
