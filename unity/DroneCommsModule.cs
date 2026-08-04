@@ -41,7 +41,7 @@ public class DroneCommsModule : MonoBehaviour
 
         // 4. Automatically boot up and connect on start
         webrtcEngine.roomKey = secureChannelKey;
-        webrtcEngine.Connect(secureChannelKey);
+        webrtcEngine.ConnectNow();
         
         Debug.Log($"[DroneComms] Drone online and broadcasting on channel: {secureChannelKey}");
     }
@@ -67,7 +67,7 @@ public class DroneCommsModule : MonoBehaviour
     {
         if (webrtcEngine != null)
         {
-            webrtcEngine.Disconnect();
+            webrtcEngine.LeaveRoom();
             Debug.Log("[DroneComms] Feed severed permanently.");
         }
     }

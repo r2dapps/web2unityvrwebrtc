@@ -47,11 +47,11 @@ public class TacticalRadioModule : MonoBehaviour
         if (webrtcEngine == null) return;
 
         // Disconnect from old frequency if already connected
-        webrtcEngine.Disconnect();
+        webrtcEngine.LeaveRoom();
 
         currentFrequency = newFrequency;
         webrtcEngine.roomKey = currentFrequency;
-        webrtcEngine.Connect(currentFrequency);
+        webrtcEngine.ConnectNow();
         
         Debug.Log($"[TacticalRadio] Tuning radio to frequency: {currentFrequency}");
     }
