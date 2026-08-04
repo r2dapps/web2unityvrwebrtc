@@ -26,7 +26,8 @@ public class AetherCareUIController : MonoBehaviour
 
     // UI Toolkit Elements - Call Screen
     private DropdownField _cameraDropdown;
-    private Toggle _muteMicToggle;
+    private Button _muteMicBtn;
+    private bool _isMuted = false;
     private Slider _remoteVolumeSlider;
     private Button _leaveBtn;
     private Button _toggleChatBtn;
@@ -60,7 +61,7 @@ public class AetherCareUIController : MonoBehaviour
             _joinBtn = root.Q<Button>("join-btn");
             
             _cameraDropdown = root.Q<DropdownField>("camera-dropdown");
-            _muteMicToggle = root.Q<Toggle>("mute-mic");
+            _muteMicBtn = root.Q<Button>("mute-mic-btn");
             _remoteVolumeSlider = root.Q<Slider>("remote-volume");
 
             _leaveBtn = root.Q<Button>("leave-btn");
@@ -119,7 +120,24 @@ public class AetherCareUIController : MonoBehaviour
             }
 
             if (_roomKey != null) _roomKey.RegisterValueChangedCallback(evt => webrtcManager.roomKey = evt.newValue);
-            if (_muteMicToggle != null) _muteMicToggle.RegisterValueChangedCallback(evt => webrtcManager.SetMicrophoneMuted(evt.newValue));
+            
+            if (_muteMicBtn != null) 
+            {
+                _muteMicBtn.clicked += () => {
+                    if (webrtcManager != null) {
+                        _isMuted = !_isMuted;
+                        webrtcManager.SetMicrophoneMuted(_isMuted);
+                        
+                        // Toggle color between slate and red
+                        if (_isMuted) {
+                            _muteMicBtn.style.backgroundColor = new StyleColor(new Color(0.93f, 0.26f, 0.26f)); // Red-500
+                        } else {
+                            _muteMicBtn.style.backgroundColor = new StyleColor(new Color(0.2f, 0.25f, 0.33f)); // Slate-700
+                        }
+                    }
+                };
+            }
+            
             if (_remoteVolumeSlider != null) _remoteVolumeSlider.RegisterValueChangedCallback(evt => webrtcManager.SetRemoteVolume(evt.newValue));
         }
 

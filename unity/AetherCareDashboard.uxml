@@ -23,16 +23,16 @@
             <!-- Floating Bottom Toolbar -->
             <ui:VisualElement class="bottom-toolbar">
                 <ui:VisualElement class="toolbar-group">
-                    <ui:Toggle label="Mute Mic" name="mute-mic" class="toolbar-toggle" />
+                    <ui:Button text="🎤" name="mute-mic-btn" class="toolbar-btn icon-btn" />
                     <ui:DropdownField name="camera-dropdown" class="toolbar-dropdown" />
                 </ui:VisualElement>
                 
                 <ui:VisualElement class="toolbar-group center-group">
-                    <ui:Button text="Leave Room" name="leave-btn" class="danger-btn" />
+                    <ui:Button text="📞" name="leave-btn" class="danger-btn icon-btn" />
                 </ui:VisualElement>
                 
                 <ui:VisualElement class="toolbar-group right-group">
-                    <ui:Button text="Chat" name="toggle-chat-btn" class="toolbar-btn" />
+                    <ui:Button text="💬" name="toggle-chat-btn" class="toolbar-btn icon-btn" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
