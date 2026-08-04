@@ -89,7 +89,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (shareRoomKeyTag) shareRoomKeyTag.textContent = key;
   }
 
+  const btnNewKey = document.getElementById('btnNewKey');
   if (btnNewKey) btnNewKey.addEventListener('click', generateNewRoomKey);
+
+  const btnCopyLobbyKey = document.getElementById('btnCopyLobbyKey');
+  if (btnCopyLobbyKey) {
+    btnCopyLobbyKey.addEventListener('click', () => {
+      const currentKey = doctorRoomInput ? doctorRoomInput.value : '';
+      if (currentKey) {
+        navigator.clipboard.writeText(currentKey);
+        btnCopyLobbyKey.innerHTML = '<i class="fa-solid fa-check"></i>';
+        setTimeout(() => btnCopyLobbyKey.innerHTML = '<i class="fa-solid fa-copy"></i>', 2000);
+      }
+    });
+  }
 
   updateExpiryDisplay();
   generateNewRoomKey();
@@ -112,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
       panelDoctor.style.display = 'none';
     });
   }
+
 
   // 4. URL Parameter Parsing (Auto-Join as Patient)
   const urlParams = new URLSearchParams(window.location.search);
@@ -158,225 +172,532 @@ document.addEventListener('DOMContentLoaded', () => {
     await initNativeWebRTC(role, dbUrl);
   }
 
-  // --- PURE NATIVE WEBRTC (RTCPeerConnection) + AUTOMATIC FIREBASE CLEANUP ---
-  async function initNativeWebRTC(role, dbUrl) {
-    console.log(`🔥 Initializing Native WebRTC [Role: ${role}] using Firebase DB:`, dbUrl);
+  
+// ==========================================
+// AETHERCARE MESH MANAGER BACKEND
+// ==========================================
+// ---------------------------------------------------------------------------
+// Config — TURN is what actually gets media through across networks/mobile
+// data (see docs/ARCHITECTURE_AND_SETUP.md §1, §8). The actual mode is
+// picked centrally in config.js (AETHERCARE_CONFIG.turnMode) — see that
+// file's comments for which mode fits which of your scenarios.
+// ---------------------------------------------------------------------------
 
+const STUN_ONLY = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+];
+
+const OPENRELAY_FALLBACK = [
+  ...STUN_ONLY,
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
+// Fetches a fresh ICE server list according to AETHERCARE_CONFIG.turnMode.
+// Called once per room join (not cached globally) so Cloudflare mode always
+// gets a freshly-minted, non-expired credential for that session.
+async function resolveIceServers() {
+  const cfg = window.AETHERCARE_CONFIG || {};
+  const mode = cfg.turnMode || 'openrelay';
+
+  if (mode === 'none') return STUN_ONLY;
+
+  if (mode === 'cloudflare') {
+    if (!cfg.turnCredentialEndpoint) {
+      console.warn('[AetherCare] turnMode is "cloudflare" but turnCredentialEndpoint is empty in config.js — falling back to OpenRelay. See cloudflare-worker/README.md.');
+      return OPENRELAY_FALLBACK;
+    }
     try {
-      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-        firebase.initializeApp({ databaseURL: dbUrl });
-      }
-      if (typeof firebase !== 'undefined') {
-        firebaseDb = firebase.database();
-      }
+      const res = await fetch(cfg.turnCredentialEndpoint);
+      if (!res.ok) throw new Error('Worker returned ' + res.status);
+      const data = await res.json();
+      if (!data.iceServers || !data.iceServers.length) throw new Error('Worker response had no iceServers');
+      // Keep a STUN fallback alongside Cloudflare's servers — cheap and harmless.
+      return [...STUN_ONLY, ...data.iceServers];
     } catch (e) {
-      console.error("Firebase Init Error:", e);
+      console.warn('[AetherCare] Could not fetch Cloudflare TURN credentials (' + e.message + ') — falling back to OpenRelay for this session.');
+      return OPENRELAY_FALLBACK;
     }
+  }
 
-    pc = new RTCPeerConnection(ICE_SERVERS);
-    
-    pc.oniceconnectionstatechange = () => {
-      console.log("🌐 ICE Connection State:", pc.iceConnectionState);
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        if (connectingOverlay) connectingOverlay.style.display = 'none';
-      } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-        console.warn("⚠️ ICE Connection disconnected or failed. Attempting ICE restart...");
-        if (pc.restartIce) {
-          pc.restartIce();
-        }
-      }
-    };
+  // mode === 'openrelay', or anything unrecognized
+  return OPENRELAY_FALLBACK;
+}
 
-    await acquireLocalCamera();
+const $ = (id) => document.getElementById(id);
+const uid = () => (crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10));
+const randomRoomKey = () => 'ROOM-' + Math.floor(1000 + Math.random() * 9000);
 
-    // 1. PeerJS Web-to-Web Cross-Network Engine (Identical to WalkieTalkie)
-    if (typeof Peer !== 'undefined') {
+function toast(msg, ms = 2200) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// ---------------------------------------------------------------------------
+// Signaling adapters — both expose the same tiny interface:
+//   connect({room, peerId, meta})
+//   onRoster(cb)  cb(peerIds[])
+//   onSignal(cb)  cb(fromPeerId, data)
+//   sendSignal(toPeerId, data)
+//   disconnect()
+// Because the interface is identical, MeshManager never knows or cares
+// which backend is behind it — same code path for cloud or LAN mode.
+// ---------------------------------------------------------------------------
+
+class FirebaseSignaling {
+  constructor(databaseUrl) {
+    this.databaseUrl = databaseUrl;
+    this._rosterCb = null;
+    this._signalCb = null;
+  }
+
+  connect({ room, peerId, meta }) {
+    return new Promise((resolve, reject) => {
       try {
-        const pId = role === 'doctor' ? currentRoomId : `patient_${Math.floor(1000 + Math.random() * 9000)}`;
-        const peerJsInstance = new Peer(pId, { config: ICE_SERVERS, debug: 1 });
-        
-        peerJsInstance.on('open', (id) => {
-          console.log("🚀 PeerJS Web Engine Ready [ID:", id, "]");
-          if (role === 'patient') {
-            const call = peerJsInstance.call(currentRoomId, localStream);
-            if (call) {
-              call.on('stream', (remoteStream) => {
-                console.log("🎉 PeerJS Remote Stream Received!");
-                if (remoteVideo) {
-                  remoteVideo.srcObject = remoteStream;
-                  remoteVideo.play().catch(() => {});
-                }
-                if (connectingOverlay) connectingOverlay.style.display = 'none';
-              });
-            }
-          }
-        });
-
-        peerJsInstance.on('call', (call) => {
-          console.log("📞 Incoming PeerJS Call!");
-          call.answer(localStream);
-          call.on('stream', (remoteStream) => {
-            console.log("🎉 PeerJS Remote Stream Received!");
-            if (remoteVideo) {
-              remoteVideo.srcObject = remoteStream;
-              remoteVideo.play().catch(() => {});
-            }
-            if (connectingOverlay) connectingOverlay.style.display = 'none';
-          });
-        });
-      } catch (e) {
-        console.warn("PeerJS Init Warning:", e);
-      }
-    }
-
-    // 2. Firebase Native WebRTC Engine (For Unity VR & standard WebRTC)
-    if (localStream) {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    }
-
-    let remoteStream = new MediaStream();
-
-    pc.ontrack = (event) => {
-      console.log("🎉 SUCCESS! Native WebRTC Remote Track Received!", event.track.kind);
-      if (event.streams && event.streams[0]) {
-        event.streams[0].getTracks().forEach((t) => {
-          if (!remoteStream.getTracks().some((existing) => existing.id === t.id)) {
-            remoteStream.addTrack(t);
-          }
-        });
-      } else if (event.track) {
-        if (!remoteStream.getTracks().some((existing) => existing.id === event.track.id)) {
-          remoteStream.addTrack(event.track);
+        if (!firebase.apps.length) {
+          firebase.initializeApp({ databaseURL: this.databaseUrl });
+        } else if (firebase.apps[0].options.databaseURL !== this.databaseUrl) {
+          firebase.app().delete().finally(() => firebase.initializeApp({ databaseURL: this.databaseUrl }));
         }
-      }
+        this.db = firebase.database();
+        this.room = room;
+        this.peerId = peerId;
 
-      if (remoteVideo && remoteVideo.srcObject !== remoteStream) {
-        remoteVideo.srcObject = remoteStream;
-      }
+        this.peersRef = this.db.ref(`rooms/${room}/peers`);
+        this.myPeerRef = this.peersRef.child(peerId);
+        this.mailboxRef = this.db.ref(`rooms/${room}/mailbox/${peerId}`);
 
-      if (remoteVideo && remoteVideo.paused) {
-        remoteVideo.play().catch((e) => {
-          console.warn("Autoplay blocked, attempting user touch fallback:", e);
+        this.myPeerRef.set({ ...meta, joinedAt: Date.now() });
+        this.myPeerRef.onDisconnect().remove();
+
+        this.peersRef.on('value', (snap) => {
+          const val = snap.val() || {};
+          const ids = Object.keys(val).filter((id) => id !== peerId);
+          const rolesById = {};
+          const namesById = {};
+          ids.forEach((id) => {
+            rolesById[id] = (val[id] && val[id].role) || 'peer';
+            namesById[id] = (val[id] && val[id].name) || '';
+          });
+          if (this._rosterCb) this._rosterCb(ids, rolesById, namesById);
+        });
+
+        this.mailboxRef.on('child_added', (snap) => {
+          const msg = snap.val();
+          snap.ref.remove(); // one-shot mailbox, avoid replay on reconnect
+          if (msg && this._signalCb) this._signalCb(msg.from, msg.data);
+        });
+
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  onRoster(cb) { this._rosterCb = cb; }
+  onSignal(cb) { this._signalCb = cb; }
+
+  sendSignal(toPeerId, data) {
+    this.db.ref(`rooms/${this.room}/mailbox/${toPeerId}`).push({ from: this.peerId, data, ts: Date.now() });
+  }
+
+  disconnect() {
+    if (this.myPeerRef) this.myPeerRef.remove();
+    if (this.peersRef) this.peersRef.off();
+    if (this.mailboxRef) this.mailboxRef.off();
+  }
+}
+
+class LocalServerSignaling {
+  constructor(wsUrl) {
+    this.wsUrl = wsUrl;
+    this._rosterCb = null;
+    this._signalCb = null;
+  }
+
+  connect({ room, peerId, meta }) {
+    return new Promise((resolve, reject) => {
+      this.room = room;
+      this.peerId = peerId;
+      this.ws = new WebSocket(this.wsUrl);
+
+      this.ws.onopen = () => {
+        this.ws.send(JSON.stringify({ type: 'join', room, peerId, meta }));
+      };
+
+      this.ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'joined') resolve();
+        else if (msg.type === 'roster' && this._rosterCb) this._rosterCb(msg.peers || [], msg.roles || {}, msg.names || {});
+        else if (msg.type === 'signal' && this._signalCb) this._signalCb(msg.from, msg.data);
+        else if (msg.type === 'ping') this.ws.send(JSON.stringify({ type: 'pong' }));
+      };
+
+      this.ws.onerror = () => reject(new Error('Could not reach local signaling server at ' + this.wsUrl));
+      this.ws.onclose = () => { /* peers list will settle via the other side's leave detection */ };
+    });
+  }
+
+  onRoster(cb) { this._rosterCb = cb; }
+  onSignal(cb) { this._signalCb = cb; }
+
+  sendSignal(toPeerId, data) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'signal', to: toPeerId, data }));
+    }
+  }
+
+  disconnect() {
+    if (this.ws) { try { this.ws.send(JSON.stringify({ type: 'leave' })); } catch (_) { } this.ws.close(); }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mesh manager — one RTCPeerConnection per remote peer. Initiator for each
+// pair is decided deterministically (lower peerId offers) so both sides
+// never race to create duplicate offers.
+// ---------------------------------------------------------------------------
+
+class MeshManager {
+  constructor({ signaling, myId, myRole, topology, localStream, iceServers, callbacks }) {
+    this.signaling = signaling;
+    this.myId = myId;
+    this.myRole = myRole || 'peer';       // 'peer' | 'hub' | 'spoke'
+    this.topology = topology || 'mesh';   // 'mesh' | 'hub-spoke'
+    this.localStream = localStream;
+    this.iceServers = iceServers || OPENRELAY_FALLBACK;
+    this.cb = callbacks;
+    this.pcs = new Map();
+    this.dataChannels = new Map();
+    this.peerRoles = new Map();
+    this.statsTimer = null;
+
+    signaling.onSignal((from, data) => this._handleSignal(from, data));
+    signaling.onRoster((ids, rolesById, namesById) => {
+      // Store peer names before reconciling so new tiles get the correct name.
+      if (namesById) {
+        Object.entries(namesById).forEach(([id, name]) => {
+          if (name) {
+            // state.peerNames.set(id, name);
+            // updateTileNameIfExists(id, name);
+          }
         });
       }
-      if (connectingOverlay) connectingOverlay.style.display = 'none';
+      this._reconcileRoster(ids, rolesById);
+    });
+
+    this.statsTimer = setInterval(() => this._pollConnectionTypes(), 3000);
+  }
+
+  // In 'mesh' topology every peer connects to every other peer — right for
+  // 1-to-1 and small groups. In 'hub-spoke' topology (classroom / Unity
+  // simulation with many students, one instructor), a spoke ONLY connects
+  // to the hub, never to other spokes, so each spoke opens exactly one
+  // connection no matter how many students are in the room. This is what
+  // lets the classroom case scale well past mesh's ~4-6 peer ceiling.
+  _shouldConnectTo(peerId) {
+    if (this.topology !== 'hub-spoke') return true;
+    if (this.myRole === 'hub') return true; // hub connects to everyone
+    const theirRole = this.peerRoles.get(peerId);
+    return theirRole === 'hub'; // spokes only connect to the hub
+  }
+
+  _reconcileRoster(ids, rolesById) {
+    if (rolesById) this.peerRoles = new Map(Object.entries(rolesById));
+    const idSet = new Set(ids);
+    for (const id of ids) {
+      if (!this._shouldConnectTo(id)) continue;
+      if (!this.pcs.has(id)) {
+        this._createPeer(id, this.myId < id);
+        // const name = state.peerNames.get(id) || id.slice(0, 8);
+        // appendSystemChatMessage(`🟢 ${name} joined the room`);
+        // attachRemoteStream(id, null); // Render tile immediately with avatar badge
+      }
+    }
+    for (const id of Array.from(this.pcs.keys())) {
+      if (!idSet.has(id) || !this._shouldConnectTo(id)) this._removePeer(id);
+    }
+  }
+
+  _createPeer(peerId, iAmInitiator) {
+    const pc = new RTCPeerConnection({ iceServers: this.iceServers });
+    this.pcs.set(peerId, pc);
+    this.cb.onPeerState(peerId, 'pending');
+
+    if (this.localStream) {
+      for (const track of this.localStream.getTracks()) pc.addTrack(track, this.localStream);
+    }
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) this.signaling.sendSignal(peerId, { kind: 'ice', candidate: e.candidate.toJSON() });
     };
 
-    if (!firebaseDb) {
-      alert("Firebase Database connection failed!");
+    pc.ontrack = (e) => {
+      let stream = (e.streams && e.streams[0]) ? e.streams[0] : null;
+      if (!stream) {
+        if (!this.remoteStreams) this.remoteStreams = new Map();
+        stream = this.remoteStreams.get(peerId);
+        if (!stream) {
+          stream = new MediaStream();
+          this.remoteStreams.set(peerId, stream);
+        }
+        if (!stream.getTracks().some(t => t.id === e.track.id)) {
+          stream.addTrack(e.track);
+        }
+      }
+      this.cb.onRemoteTrack(peerId, stream);
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') this.cb.onPeerState(peerId, 'direct'); // refined by stats poll
+      else if (pc.connectionState === 'connecting') this.cb.onPeerState(peerId, 'pending');
+      else if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) this.cb.onPeerState(peerId, 'pending');
+    };
+
+    pc.ondatachannel = (e) => this._wireDataChannel(peerId, e.channel);
+
+    if (iAmInitiator) {
+      const dc = pc.createDataChannel('chat');
+      this._wireDataChannel(peerId, dc);
+
+      pc.createOffer()
+        .then((offer) => pc.setLocalDescription(offer))
+        .then(() => this.signaling.sendSignal(peerId, { kind: 'offer', sdp: pc.localDescription.sdp }))
+        .catch((e) => console.error('offer failed', e));
+    }
+
+    return pc;
+  }
+
+  _wireDataChannel(peerId, dc) {
+    this.dataChannels.set(peerId, dc);
+    dc.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        this.cb.onChatMessage(peerId, msg);
+      } catch (_) { }
+    };
+  }
+
+  async _handleSignal(from, data) {
+    if (data.kind === 'host-closed') {
+      toast('The Host closed the room session.');
+      leaveCall(false);
       return;
     }
 
-    const sRoom = currentRoomId.replace(/[^A-Z0-9]/g, '');
-    activeRoomRef = firebaseDb.ref(`web2rvr_rooms/${sRoom}`);
-    
-    // AUTO CLEANUP: When Doctor closes browser tab, auto-delete room data from Firebase!
-    if (role === 'doctor') {
-      activeRoomRef.onDisconnect().remove();
-    }
+    let pc = this.pcs.get(from);
+    if (!pc) pc = this._createPeer(from, false); // reactive create if roster event hasn't arrived yet
 
-    const offerRef = activeRoomRef.child('offer');
-    const answerRef = activeRoomRef.child('answer');
-    const doctorCandidatesRef = activeRoomRef.child('doctor_candidates');
-    const patientCandidatesRef = activeRoomRef.child('patient_candidates');
-
-    // Immediate ICE Candidate handling & candidate queue
-    const remoteCandidateQueue = [];
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const targetRef = role === 'doctor' ? doctorCandidatesRef : patientCandidatesRef;
-        targetRef.push(event.candidate.toJSON());
+    if (data.kind === 'offer') {
+      await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
+      if (pc._iceQueue) {
+        for (const c of pc._iceQueue) pc.addIceCandidate(c).catch(e => console.warn('queued ICE fail', e));
+        pc._iceQueue = null;
       }
-    };
-
-    async function handleIncomingCandidate(candidateData) {
-      if (!candidateData) return;
-      if (pc.remoteDescription && pc.remoteDescription.type) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-        } catch (e) { console.warn("Candidate add warning:", e); }
-      } else {
-        remoteCandidateQueue.push(candidateData);
-      }
-    }
-
-    async function flushRemoteCandidates() {
-      while (remoteCandidateQueue.length > 0) {
-        const cand = remoteCandidateQueue.shift();
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(cand));
-        } catch (e) {}
-      }
-    }
-
-    if (role === 'doctor') {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      await offerRef.set({
-        sdp: offer.sdp,
-        type: offer.type,
-        timestamp: Date.now()
-      });
-
-      answerRef.on('value', async (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.sdp && !pc.currentRemoteDescription) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data));
-          await flushRemoteCandidates();
-        }
-      });
-
-      patientCandidatesRef.on('child_added', async (snapshot) => {
-        const candidateData = snapshot.val();
-        await handleIncomingCandidate(candidateData);
-      });
-
-    } else {
-      const offerSnap = await offerRef.once('value');
-      const offerData = offerSnap.val();
-
-      if (!offerData || !offerData.sdp) {
-        alert(`Room "${currentRoomId}" not found or Doctor has not created the room yet! Please check the key.`);
-        location.reload();
-        return;
-      }
-
-      await pc.setRemoteDescription(new RTCSessionDescription(offerData));
-      await flushRemoteCandidates();
-
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-
-      await answerRef.set({
-        sdp: answer.sdp,
-        type: answer.type,
-        timestamp: Date.now()
-      });
-
-      doctorCandidatesRef.on('child_added', async (snapshot) => {
-        const candidateData = snapshot.val();
-        await handleIncomingCandidate(candidateData);
-      });
+      this.signaling.sendSignal(from, { kind: 'answer', sdp: pc.localDescription.sdp });
+    } else if (data.kind === 'answer') {
+      await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
+      if (pc._iceQueue) {
+        for (const c of pc._iceQueue) pc.addIceCandidate(c).catch(e => console.warn('queued ICE fail', e));
+        pc._iceQueue = null;
+      }
+    } else if (data.kind === 'ice') {
+      if (pc.remoteDescription) {
+        try { await pc.addIceCandidate(data.candidate); } catch (e) { console.warn('ICE add failed', e); }
+      } else {
+        if (!pc._iceQueue) pc._iceQueue = [];
+        pc._iceQueue.push(data.candidate);
+      }
     }
   }
 
-  async function acquireLocalCamera() {
+  broadcastSignal(data) {
+    for (const peerId of this.pcs.keys()) {
+      this.signaling.sendSignal(peerId, data);
+    }
+  }
+
+  _removePeer(peerId) {
+    // const name = state.peerNames.get(peerId) || peerId.slice(0, 8);
+    // appendSystemChatMessage(`🔴 ${name} left the room`);
+    const pc = this.pcs.get(peerId);
+    if (pc) pc.close();
+    this.pcs.delete(peerId);
+    this.dataChannels.delete(peerId);
+    this.cb.onPeerLeft(peerId);
+  }
+
+  async _pollConnectionTypes() {
+    for (const [peerId, pc] of this.pcs.entries()) {
+      if (pc.connectionState !== 'connected') continue;
+      try {
+        const stats = await pc.getStats();
+        let selectedPair = null;
+        stats.forEach((report) => {
+          if (report.type === 'transport' && report.selectedCandidatePairId) {
+            selectedPair = stats.get(report.selectedCandidatePairId);
+          }
+        });
+        if (!selectedPair) {
+          stats.forEach((report) => { if (report.type === 'candidate-pair' && report.state === 'succeeded') selectedPair = report; });
+        }
+        if (selectedPair) {
+          const local = stats.get(selectedPair.localCandidateId);
+          const remote = stats.get(selectedPair.remoteCandidateId);
+          const isRelay = (local && local.candidateType === 'relay') || (remote && remote.candidateType === 'relay');
+          this.cb.onPeerState(peerId, isRelay ? 'relay' : 'direct');
+        }
+      } catch (_) { /* getStats shape varies by browser, degrade quietly */ }
+    }
+  }
+
+  broadcastChat(text) {
+    const payload = JSON.stringify({ text, ts: Date.now() });
+    for (const dc of this.dataChannels.values()) {
+      if (dc.readyState === 'open') dc.send(payload);
+    }
+  }
+
+  replaceVideoTrack(newTrack) {
+    for (const pc of this.pcs.values()) {
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+      if (sender) sender.replaceTrack(newTrack);
+    }
+  }
+
+  destroyAll() {
+    clearInterval(this.statsTimer);
+    for (const pc of this.pcs.values()) pc.close();
+    this.pcs.clear();
+    this.dataChannels.clear();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// App state + UI wiring
+// ---------------------------------------------------------------------------
+
+const state = {
+  myId: uid(),
+  displayName: '',
+  peerType: 'web',
+  callMode: 'video',
+  signalingKind: (window.AETHERCARE_CONFIG && window.AETHERCARE_CONFIG.defaultSignaling) || 'firebase',
+  topology: (window.AETHERCARE_CONFIG && window.AETHERCARE_CONFIG.defaultTopology) || 'mesh',
+  myRole: (window.AETHERCARE_CONFIG && window.AETHERCARE_CONFIG.defaultRole) || 'peer',
+  room: null,
+  localStream: null,
+  mesh: null,
+  signaling: null,
+  peerNames: new Map(),   // peerId -> display name
+  peerTypes: new Map(),   // peerId -> 'web' | 'vr'
+  peerAvatars: new Map(), // peerId -> { initials, color }
+  peerStates: new Map(),  // peerId -> 'pending' | 'direct' | 'relay'
+  chatOpen: false,
+  unreadChat: 0,
+  facingMode: 'user',
+};
+
+// --- Avatar helpers ----------------------------------------------------------
+const AVATAR_COLORS = [
+  '#2dd4bf', '#818cf8', '#f472b6', '#fb923c', '#34d399', '#60a5fa', '#a78bfa', '#f87171'
+];
+
+
+// ==========================================
+// AETHERCARE ADAPTER
+// ==========================================
+let meshManager = null;
+let signaling = null;
+let localStreamRef = null;
+
+async function initNativeWebRTC(role, dbUrl) {
+    console.log(`🔥 Initializing AetherCare Engine [Role: ${role}] using Firebase DB: `, dbUrl);
+    
+    // Resolve STUN/TURN servers via config (uses AETHERCARE_CONFIG.turnMode)
+    const iceServers = await resolveIceServers();
+    
+    signaling = new FirebaseSignaling(dbUrl);
+    
+    // Attempt local media
+    await acquireLocalCamera();
+    
+    // Connect to room
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({
+        await signaling.connect({
+            room: currentRoomId,
+            peerId: uid(),
+            meta: { name: userRole === 'doctor' ? 'Doctor' : 'Patient', type: 'web', role: role === 'doctor' ? 'hub' : 'spoke' }
+        });
+    } catch (e) {
+        alert('Signaling connection failed: ' + e.message);
+        return;
+    }
+    
+    meshManager = new MeshManager({
+        signaling: signaling,
+        myId: signaling.peerId,
+        myRole: role === 'doctor' ? 'hub' : 'spoke',
+        topology: 'hub-spoke', // Hub and spoke fits doctor(hub)-patient(spoke) nicely
+        localStream: localStreamRef,
+        iceServers: iceServers,
+        callbacks: {
+            onRemoteTrack: (peerId, stream) => {
+                console.log("🎉 Remote Stream Received!");
+                const remoteVideo = document.getElementById('remoteVideo');
+                if (remoteVideo && remoteVideo.srcObject !== stream) {
+                    remoteVideo.srcObject = stream;
+                }
+                const connectingOverlay = document.getElementById('connectingOverlay');
+                if (connectingOverlay) connectingOverlay.style.display = 'none';
+            },
+            onRemoteTrackRemoved: (peerId, trackId) => {},
+            onChatMessage: (peerId, msg) => {},
+            onPeerState: (peerId, state, role) => {
+                console.log("🌐 Connection state for", peerId, ":", state);
+            },
+            onTopologyUpdate: (map) => {},
+            onPeerLeft: (peerId) => {
+                console.log("🔴 Peer Left:", peerId);
+            }
+        }
+    });
+}
+
+// Override acquireLocalCamera to save stream to localStreamRef
+async function acquireLocalCamera() {
+    try {
+      localStreamRef = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true
       });
-      if (localVideo) localVideo.srcObject = localStream;
+      const localVideo = document.getElementById('localVideo');
+      if (localVideo) {
+          localVideo.srcObject = localStreamRef;
+          if (facingMode === 'user') {
+              localVideo.style.transform = 'scaleX(-1)'; // Selfie flip!
+          } else {
+              localVideo.style.transform = 'none';
+          }
+      }
     } catch (err) {
       console.warn("Camera busy or blocked. Using synthetic stream fallback...", err);
-      localStream = createFallbackCanvasStream();
-      if (localVideo) localVideo.srcObject = localStream;
+      localStreamRef = createFallbackCanvasStream();
+      const localVideo = document.getElementById('localVideo');
+      if (localVideo) localVideo.srcObject = localStreamRef;
     }
-  }
+}
 
-  function createFallbackCanvasStream() {
+function createFallbackCanvasStream() {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 360;
@@ -393,7 +714,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 100);
 
     return canvas.captureStream(30);
-  }
+}
+
+// Update btnToggleMic / btnToggleCam to use localStreamRef instead of undefined localStream variable
+document.getElementById('btnToggleMic').addEventListener('click', (e) => {
+    // Override the old event listener by replacing the node or just ensuring it uses localStreamRef
+});
+// A safer way is to just let the old code run if it used localStream, but we will redefine the button clicks in the topPart by injecting a small script or we just rewrite the bottom section completely.
 
   // Copy Room Key
   if (btnCopyKey) {
@@ -407,9 +734,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Controls Logic
   if (btnToggleMic) {
     btnToggleMic.addEventListener('click', () => {
-      if (!localStream) return;
+      if (!localStreamRef) return;
       isAudioMuted = !isAudioMuted;
-      localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
+      localStreamRef.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
       btnToggleMic.classList.toggle('off', isAudioMuted);
       btnToggleMic.innerHTML = `<i class="fa-solid ${isAudioMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i>`;
     });
@@ -417,9 +744,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnToggleCam) {
     btnToggleCam.addEventListener('click', () => {
-      if (!localStream) return;
+      if (!localStreamRef) return;
       isVideoOff = !isVideoOff;
-      localStream.getVideoTracks().forEach(t => t.enabled = !isVideoOff);
+      localStreamRef.getVideoTracks().forEach(t => t.enabled = !isVideoOff);
       btnToggleCam.classList.toggle('off', isVideoOff);
       btnToggleCam.innerHTML = `<i class="fa-solid ${isVideoOff ? 'fa-video-slash' : 'fa-video'}"></i>`;
     });
@@ -428,16 +755,21 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnFlipCam) {
     btnFlipCam.addEventListener('click', async () => {
       facingMode = facingMode === 'user' ? 'environment' : 'user';
-      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (localStreamRef) localStreamRef.getTracks().forEach(t => t.stop());
       await acquireLocalCamera();
+      // Inform MeshManager of track change
+      if (meshManager && localStreamRef) {
+          const videoTrack = localStreamRef.getVideoTracks()[0];
+          if (videoTrack) meshManager.replaceVideoTrack(videoTrack);
+      }
     });
   }
 
   if (btnEndSession) {
     btnEndSession.addEventListener('click', () => {
-      if (activeRoomRef) activeRoomRef.remove(); // INSTANT CLEANUP ON SESSION END
-      if (pc) pc.close();
-      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (meshManager) meshManager.cleanup();
+      if (signaling) signaling.disconnect();
+      if (localStreamRef) localStreamRef.getTracks().forEach(t => t.stop());
       window.location.href = window.location.pathname;
     });
   }

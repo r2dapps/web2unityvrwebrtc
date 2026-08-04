@@ -45,6 +45,7 @@
           <label for="doctorRoomInput"><i class="fa-solid fa-key"></i> Room Key</label>
           <div class="input-with-btn">
             <input type="text" id="doctorRoomInput" value="DOC-8921" readonly>
+            <button id="btnCopyLobbyKey" class="btn-icon" title="Copy Key"><i class="fa-solid fa-copy"></i></button>
             <button id="btnNewKey" class="btn-icon" title="New Key"><i class="fa-solid fa-rotate"></i></button>
           </div>
           <div class="expiry-info">
@@ -53,13 +54,14 @@
         </div>
         <p class="help-text">Share Room Key <strong><span id="shareRoomKeyTag">DOC-8921</span></strong> with Patient or Unity VR.</p>
 
-        <!-- Optional Custom Firebase Collapsible -->
+        <!-- Optional Custom Firebase Collapsible 
         <details style="width: 100%; font-size: 0.75rem; color: #94a3b8;">
           <summary style="cursor: pointer; padding: 0.3rem 0; color: #06b6d4;"><i class="fa-solid fa-gear"></i> Custom Firebase Database URL (Optional)</summary>
           <div class="form-group" style="margin-top: 0.5rem;">
             <input type="text" id="customFirebaseInput" placeholder="https://YOUR-NEW-PROJECT-rtdb.firebaseio.com">
           </div>
         </details>
+        -->
 
         <button id="btnCreateRoom" class="btn btn-primary btn-block">
           <i class="fa-solid fa-video"></i> Create Room & Start Camera
@@ -120,6 +122,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="config.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

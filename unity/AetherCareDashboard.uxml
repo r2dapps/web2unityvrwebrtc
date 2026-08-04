@@ -1,0 +1,59 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <Style src="AetherCareStyle.uss" />
+    <ui:VisualElement class="dashboard-container">
+        
+        <!-- Main Call Screen (Background) -->
+        <ui:VisualElement class="main-call-screen" name="main-call-screen">
+            <!-- Fullscreen Video -->
+            <ui:VisualElement class="video-container" name="video-container">
+                <ui:Label text="Remote Video Feed" class="placeholder-text" name="video-placeholder" />
+                <ui:VisualElement name="local-video-pip" class="local-pip" />
+            </ui:VisualElement>
+
+            <!-- Collapsible Chat Sidebar (Right) -->
+            <ui:VisualElement class="chat-panel hidden" name="chat-panel">
+                <ui:Label text="Chat" class="chat-header" />
+                <ui:ScrollView class="chat-scrollview" name="chat-scrollview" />
+                <ui:VisualElement class="chat-input-row">
+                    <ui:TextField name="chat-input" placeholder-text="Type a message..." class="chat-input-field" />
+                    <ui:Button text="Send" name="send-chat-btn" class="chat-send-btn" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Floating Bottom Toolbar -->
+            <ui:VisualElement class="bottom-toolbar">
+                <ui:VisualElement class="toolbar-group">
+                    <ui:Toggle label="Mute Mic" name="mute-mic" class="toolbar-toggle" />
+                    <ui:DropdownField label="Camera" name="camera-dropdown" class="toolbar-dropdown" />
+                </ui:VisualElement>
+                
+                <ui:VisualElement class="toolbar-group center-group">
+                    <ui:Button text="Leave Room" name="leave-btn" class="danger-btn" />
+                </ui:VisualElement>
+                
+                <ui:VisualElement class="toolbar-group right-group">
+                    <ui:Button text="Chat" name="toggle-chat-btn" class="toolbar-btn" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Lobby Overlay -->
+        <ui:VisualElement class="lobby-overlay" name="lobby-overlay">
+            <ui:VisualElement class="lobby-card">
+                <ui:Label text="AetherCare Telemedicine" class="lobby-title" />
+                <ui:Label text="Connect to a secure telemedicine room." class="lobby-subtitle" />
+                
+                <ui:VisualElement class="lobby-inputs">
+                    <ui:TextField label="Your Name" name="display-name" placeholder-text="e.g. Dr. Smith" class="lobby-input" />
+                    <ui:TextField label="Room Code" name="room-key" text="ROOM-8921" class="lobby-input" />
+                </ui:VisualElement>
+                
+                <ui:VisualElement class="lobby-buttons">
+                    <ui:Button text="Join Meeting" name="join-btn" class="primary-button lobby-action-btn" />
+                    <ui:Button text="Host Meeting" name="host-btn" class="secondary-button lobby-action-btn" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>
